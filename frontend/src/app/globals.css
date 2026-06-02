@@ -1,0 +1,455 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+:root {
+  --background: #0B1120;
+  --foreground: #E2E8F0;
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --glow-primary: rgba(99, 102, 241, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+/* 数字等宽字体 */
+.font-mono,
+.number-mono {
+  font-family: "JetBrains Mono", Menlo, Monaco, monospace;
+}
+
+/* 自定义滚动条 - 深色主题 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* 渐变背景 - 深色侧边栏 */
+.gradient-bg {
+  background: linear-gradient(180deg, #0B1120 0%, #111827 100%);
+}
+
+/* 卡片样式 - 毛玻璃效果 */
+.card {
+  @apply rounded-2xl p-6;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card-hover {
+  @apply card transition-all duration-300;
+}
+.card-hover:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* 内部卡片（嵌套在 .card 中） */
+.card-inner {
+  @apply rounded-xl p-4;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* 渐变边框卡片 */
+.card-glow {
+  @apply card relative;
+}
+.card-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 18px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.1), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* 信号标签 - 深色主题 */
+.signal-buy {
+  @apply px-2.5 py-1 rounded-full text-xs font-medium;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.signal-add {
+  @apply px-2.5 py-1 rounded-full text-xs font-medium;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+.signal-watch {
+  @apply px-2.5 py-1 rounded-full text-xs font-medium;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+.signal-reduce {
+  @apply px-2.5 py-1 rounded-full text-xs font-medium;
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+.signal-sell {
+  @apply px-2.5 py-1 rounded-full text-xs font-medium;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* 评级标签 - 深色主题 */
+.rating-buy {
+  @apply px-3 py-1 rounded-full text-sm font-bold;
+  background: linear-gradient(135deg, #10B981, #059669);
+  color: white;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+.rating-add {
+  @apply px-3 py-1 rounded-full text-sm font-bold;
+  background: linear-gradient(135deg, #3B82F6, #2563EB);
+  color: white;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+}
+.rating-watch {
+  @apply px-3 py-1 rounded-full text-sm font-bold;
+  background: linear-gradient(135deg, #F59E0B, #D97706);
+  color: white;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+.rating-reduce {
+  @apply px-3 py-1 rounded-full text-sm font-bold;
+  background: linear-gradient(135deg, #F97316, #EA580C);
+  color: white;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.3);
+}
+.rating-sell {
+  @apply px-3 py-1 rounded-full text-sm font-bold;
+  background: linear-gradient(135deg, #EF4444, #DC2626);
+  color: white;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+}
+
+/* 星级 */
+.star { @apply text-amber-400; }
+.star-empty { @apply text-gray-600; }
+
+/* 骨架屏动画 */
+.skeleton {
+  @apply animate-skeleton-pulse rounded-lg;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* 深色主题输入框 */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+select,
+textarea {
+  @apply rounded-xl px-4 py-2.5 text-sm transition-all;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #E2E8F0;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+input::placeholder,
+textarea::placeholder {
+  color: #64748b;
+}
+
+/* 深色主题按钮 */
+.btn-primary {
+  @apply px-4 py-2.5 rounded-xl text-sm font-medium transition-all;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #7c7cfa, #a78bfa);
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-ghost {
+  @apply px-4 py-2.5 rounded-xl text-sm font-medium transition-all;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94A3B8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #E2E8F0;
+}
+
+/* 深色表格 */
+table {
+  @apply w-full;
+}
+thead tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background 0.15s;
+}
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+th {
+  @apply text-xs font-medium uppercase tracking-wider;
+  color: #64748b;
+}
+td {
+  @apply text-sm;
+  color: #CBD5E1;
+}
+
+/* 免责声明 */
+.disclaimer {
+  @apply text-center text-xs py-4;
+  color: #475569;
+}
+
+/* Recharts 深色主题覆盖 */
+.recharts-cartesian-grid line {
+  stroke: #1E293B;
+}
+.recharts-text {
+  fill: #94A3B8 !important;
+  font-size: 11px;
+}
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+/* ==================== 亮色主题 ==================== */
+.light {
+  --background: #F8FAFC;
+  --foreground: #1E293B;
+  --card-bg: rgba(255, 255, 255, 0.8);
+  --card-border: rgba(0, 0, 0, 0.08);
+  --glow-primary: rgba(99, 102, 241, 0.2);
+}
+
+.light body {
+  background: #F8FAFC !important;
+  color: #1E293B !important;
+}
+
+/* --- Tailwind dark palette overrides --- */
+.light .text-dark-muted { color: #64748B !important; }
+.light .text-dark-text { color: #1E293B !important; }
+.light .bg-dark-bg { background: #F8FAFC !important; }
+.light .bg-dark-card { background: #FFFFFF !important; }
+.light .bg-dark-surface { background: #F1F5F9 !important; }
+.light .border-dark-border { border-color: #E2E8F0 !important; }
+
+/* --- Transparent white → light-appropriate --- */
+.light [class*="bg-white/\[0\.03\]"] { background: rgba(0, 0, 0, 0.03) !important; }
+.light [class*="bg-white/\[0\.05\]"] { background: rgba(0, 0, 0, 0.04) !important; }
+.light [class*="bg-white/\[0\.06\]"] { background: rgba(0, 0, 0, 0.05) !important; }
+.light [class*="bg-white/\[0\.08\]"] { background: rgba(0, 0, 0, 0.06) !important; }
+.light [class*="bg-white/5"] { background: rgba(0, 0, 0, 0.04) !important; }
+.light [class*="bg-white/10"] { background: rgba(0, 0, 0, 0.06) !important; }
+.light [class*="border-white/\[0\.03\]"] { border-color: rgba(0, 0, 0, 0.06) !important; }
+.light [class*="border-white/\[0\.06\]"] { border-color: rgba(0, 0, 0, 0.08) !important; }
+.light [class*="border-white/\[0\.08\]"] { border-color: rgba(0, 0, 0, 0.1) !important; }
+.light [class*="border-white/\[0\.1\]"] { border-color: rgba(0, 0, 0, 0.12) !important; }
+.light [class*="border-white/\[0\.15\]"] { border-color: rgba(0, 0, 0, 0.15) !important; }
+.light [class*="border-white/10"] { border-color: rgba(0, 0, 0, 0.1) !important; }
+
+/* --- White text → dark text --- */
+.light .text-white { color: #1E293B !important; }
+.light [class*="text-white/20"] { color: #94A3B8 !important; }
+.light [class*="text-white/25"] { color: #94A3B8 !important; }
+.light [class*="text-white/30"] { color: #94A3B8 !important; }
+.light [class*="text-white/40"] { color: #64748B !important; }
+.light [class*="text-white/50"] { color: #64748B !important; }
+.light [class*="text-white/80"] { color: #334155 !important; }
+
+/* --- Sidebar --- */
+.light .gradient-bg {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%) !important;
+  border-right: 1px solid #E2E8F0 !important;
+}
+
+/* --- Cards --- */
+.light .card {
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+.light .card-hover:hover {
+  background: rgba(255, 255, 255, 1) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+.light .card-inner {
+  background: rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+.light .card-glow::before {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05), transparent);
+}
+
+/* --- Skeleton --- */
+.light .skeleton {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* --- Inputs --- */
+.light input[type="text"],
+.light input[type="email"],
+.light input[type="password"],
+.light input[type="number"],
+.light input[type="search"],
+.light select,
+.light textarea {
+  background: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  color: #1E293B !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.light input:focus,
+.light select:focus,
+.light textarea:focus {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
+.light input::placeholder,
+.light textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* --- Buttons --- */
+.light .btn-ghost {
+  background: rgba(0, 0, 0, 0.03) !important;
+  color: #64748B !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+.light .btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #1E293B !important;
+}
+.light .btn-secondary {
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: #475569 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+.light .btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* --- Tables --- */
+.light table thead tr {
+  border-bottom: 1px solid #E2E8F0 !important;
+}
+.light table tbody tr {
+  border-bottom: 1px solid #F1F5F9 !important;
+}
+.light table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.04) !important;
+}
+.light table th {
+  color: #64748B !important;
+}
+.light table td {
+  color: #334155 !important;
+}
+
+/* --- Misc --- */
+.light .disclaimer {
+  color: #94A3B8 !important;
+}
+.light .star-empty {
+  color: #CBD5E1 !important;
+}
+.light .star {
+  color: #F59E0B !important;
+}
+
+/* --- Recharts --- */
+.light .recharts-cartesian-grid line {
+  stroke: #E2E8F0 !important;
+}
+.light .recharts-text {
+  fill: #64748B !important;
+}
+.light .recharts-tooltip-wrapper .bg-dark-card {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #1E293B !important;
+}
+
+/* --- Login page --- */
+.light .min-h-screen {
+  background: #F8FAFC !important;
+}
+
+/* --- Colorful badges - keep visible --- */
+.light .bg-blue-500\/10 { background: rgba(59, 130, 246, 0.1) !important; }
+.light .bg-purple-500\/10 { background: rgba(139, 92, 246, 0.1) !important; }
+.light .bg-emerald-500\/10 { background: rgba(16, 185, 129, 0.1) !important; }
+.light .bg-amber-500\/10 { background: rgba(245, 158, 11, 0.1) !important; }
+.light .bg-red-500\/10 { background: rgba(239, 68, 68, 0.1) !important; }
+.light .bg-primary-500\/10 { background: rgba(99, 102, 241, 0.1) !important; }
+.light .bg-primary-500\/20 { background: rgba(99, 102, 241, 0.15) !important; }
+.light .bg-orange-500\/10 { background: rgba(249, 115, 22, 0.1) !important; }
+.light .bg-gray-500\/10 { background: rgba(100, 116, 139, 0.1) !important; }
+
+/* --- Signal badges --- */
+.light .signal-buy { background: rgba(16, 185, 129, 0.12) !important; color: #059669 !important; }
+.light .signal-add { background: rgba(59, 130, 246, 0.12) !important; color: #2563EB !important; }
+.light .signal-watch { background: rgba(245, 158, 11, 0.12) !important; color: #D97706 !important; }
+.light .signal-reduce { background: rgba(249, 115, 22, 0.12) !important; color: #EA580C !important; }
+.light .signal-sell { background: rgba(239, 68, 68, 0.12) !important; color: #DC2626 !important; }
+
+/* --- Scrollbar --- */
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25) !important;
+}
+.light ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
