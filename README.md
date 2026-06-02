@@ -20,15 +20,13 @@
 
 ## 系统预览
 
-<!-- 请运行系统后截取各页面截图，保存到 docs/screenshots/ 目录 -->
-
 | 策略总览 | 信号中心 | 股票分析 |
 |:--------:|:--------:|:--------:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Signals](docs/screenshots/signals.png) | ![Stock](docs/screenshots/stock-detail.png) |
+| ![策略总览](https://raw.githubusercontent.com/zhuowoshuang/rongxian/main/docs/screenshots/dashboard.png) | ![信号中心](https://raw.githubusercontent.com/zhuowoshuang/rongxian/main/docs/screenshots/signals.png) | ![股票分析](https://raw.githubusercontent.com/zhuowoshuang/rongxian/main/docs/screenshots/stock-detail.png) |
 
 | 股票池 | 回测中心 | 报告中心 |
 |:------:|:--------:|:--------:|
-| ![Pools](docs/screenshots/pools.png) | ![Backtest](docs/screenshots/backtest.png) | ![Reports](docs/screenshots/reports.png) |
+| ![股票池](https://raw.githubusercontent.com/zhuowoshuang/rongxian/main/docs/screenshots/pools.png) | ![回测中心](https://raw.githubusercontent.com/zhuowoshuang/rongxian/main/docs/screenshots/backtest.png) | ![报告中心](https://raw.githubusercontent.com/zhuowoshuang/rongxian/main/docs/screenshots/reports.png) |
 
 ## 产品定位
 
