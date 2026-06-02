@@ -29,23 +29,56 @@ import numpy as np
 provider = get_provider()
 _use_mock = type(provider).__name__ == "MockProvider"
 
-# 核心股票池 - 涵盖 A 股和港股优质标的
+# 核心股票池 - 涵盖 A 股和港股优质标的（共40只）
 CORE_STOCKS = [
+    # ===== A股 - 消费板块 =====
     {"symbol": "600519", "name": "贵州茅台", "market": "A_SHARE", "exchange": "SH", "industry": "白酒", "sector": "消费"},
-    {"symbol": "300750", "name": "宁德时代", "market": "A_SHARE", "exchange": "SZ", "industry": "电池", "sector": "新能源"},
+    {"symbol": "000858", "name": "五粮液", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
+    {"symbol": "000568", "name": "泸州老窖", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
+    {"symbol": "002304", "name": "洋河股份", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
+    {"symbol": "600887", "name": "伊利股份", "market": "A_SHARE", "exchange": "SH", "industry": "乳制品", "sector": "消费"},
+    {"symbol": "000651", "name": "格力电器", "market": "A_SHARE", "exchange": "SZ", "industry": "家电", "sector": "消费"},
+    {"symbol": "000333", "name": "美的集团", "market": "A_SHARE", "exchange": "SZ", "industry": "家电", "sector": "消费"},
+    # ===== A股 - 金融板块 =====
     {"symbol": "600036", "name": "招商银行", "market": "A_SHARE", "exchange": "SH", "industry": "银行", "sector": "金融"},
     {"symbol": "601318", "name": "中国平安", "market": "A_SHARE", "exchange": "SH", "industry": "保险", "sector": "金融"},
-    {"symbol": "000858", "name": "五粮液", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
-    {"symbol": "600900", "name": "长江电力", "market": "A_SHARE", "exchange": "SH", "industry": "电力", "sector": "公用事业"},
-    {"symbol": "601012", "name": "隆基绿能", "market": "A_SHARE", "exchange": "SH", "industry": "光伏", "sector": "新能源"},
     {"symbol": "000001", "name": "平安银行", "market": "A_SHARE", "exchange": "SZ", "industry": "银行", "sector": "金融"},
+    {"symbol": "601166", "name": "兴业银行", "market": "A_SHARE", "exchange": "SH", "industry": "银行", "sector": "金融"},
+    {"symbol": "600030", "name": "中信证券", "market": "A_SHARE", "exchange": "SH", "industry": "证券", "sector": "金融"},
+    # ===== A股 - 科技/新能源板块 =====
+    {"symbol": "300750", "name": "宁德时代", "market": "A_SHARE", "exchange": "SZ", "industry": "电池", "sector": "新能源"},
+    {"symbol": "601012", "name": "隆基绿能", "market": "A_SHARE", "exchange": "SH", "industry": "光伏", "sector": "新能源"},
+    {"symbol": "002475", "name": "立讯精密", "market": "A_SHARE", "exchange": "SZ", "industry": "消费电子", "sector": "科技"},
+    {"symbol": "300059", "name": "东方财富", "market": "A_SHARE", "exchange": "SZ", "industry": "金融科技", "sector": "科技"},
+    {"symbol": "002415", "name": "海康威视", "market": "A_SHARE", "exchange": "SZ", "industry": "安防", "sector": "科技"},
+    # ===== A股 - 医药板块 =====
     {"symbol": "600276", "name": "恒瑞医药", "market": "A_SHARE", "exchange": "SH", "industry": "医药", "sector": "医药"},
     {"symbol": "603259", "name": "药明康德", "market": "A_SHARE", "exchange": "SH", "industry": "CXO", "sector": "医药"},
+    {"symbol": "300760", "name": "迈瑞医疗", "market": "A_SHARE", "exchange": "SZ", "industry": "医疗器械", "sector": "医药"},
+    # ===== A股 - 公用事业/工业 =====
+    {"symbol": "600900", "name": "长江电力", "market": "A_SHARE", "exchange": "SH", "industry": "电力", "sector": "公用事业"},
+    {"symbol": "601888", "name": "中国中免", "market": "A_SHARE", "exchange": "SH", "industry": "免税", "sector": "消费"},
+    {"symbol": "600585", "name": "海螺水泥", "market": "A_SHARE", "exchange": "SH", "industry": "水泥", "sector": "工业"},
+    # ===== 港股 - 科技板块 =====
     {"symbol": "00700", "name": "腾讯控股", "market": "HK", "exchange": "HK", "industry": "互联网", "sector": "科技"},
     {"symbol": "09988", "name": "阿里巴巴-W", "market": "HK", "exchange": "HK", "industry": "电商", "sector": "科技"},
-    {"symbol": "09618", "name": "京东集团", "market": "HK", "exchange": "HK", "industry": "电商", "sector": "科技"},
+    {"symbol": "09618", "name": "京东集团-SW", "market": "HK", "exchange": "HK", "industry": "电商", "sector": "科技"},
     {"symbol": "01810", "name": "小米集团-W", "market": "HK", "exchange": "HK", "industry": "消费电子", "sector": "科技"},
+    {"symbol": "03690", "name": "美团-W", "market": "HK", "exchange": "HK", "industry": "本地生活", "sector": "科技"},
+    {"symbol": "09888", "name": "百度集团-SW", "market": "HK", "exchange": "HK", "industry": "搜索引擎", "sector": "科技"},
+    {"symbol": "09999", "name": "网易-S", "market": "HK", "exchange": "HK", "industry": "游戏", "sector": "科技"},
+    {"symbol": "01024", "name": "快手-W", "market": "HK", "exchange": "HK", "industry": "短视频", "sector": "科技"},
+    # ===== 港股 - 金融板块 =====
     {"symbol": "02318", "name": "中国平安H", "market": "HK", "exchange": "HK", "industry": "保险", "sector": "金融"},
+    {"symbol": "01299", "name": "友邦保险", "market": "HK", "exchange": "HK", "industry": "保险", "sector": "金融"},
+    {"symbol": "00388", "name": "香港交易所", "market": "HK", "exchange": "HK", "industry": "交易所", "sector": "金融"},
+    {"symbol": "03968", "name": "招商银行H", "market": "HK", "exchange": "HK", "industry": "银行", "sector": "金融"},
+    # ===== 港股 - 消费/医药板块 =====
+    {"symbol": "02020", "name": "安踏体育", "market": "HK", "exchange": "HK", "industry": "运动服饰", "sector": "消费"},
+    {"symbol": "09633", "name": "农夫山泉", "market": "HK", "exchange": "HK", "industry": "饮料", "sector": "消费"},
+    {"symbol": "02269", "name": "药明生物", "market": "HK", "exchange": "HK", "industry": "CXO", "sector": "医药"},
+    {"symbol": "00027", "name": "银河娱乐", "market": "HK", "exchange": "HK", "industry": "博彩", "sector": "消费"},
+    {"symbol": "01928", "name": "金沙中国有限公司", "market": "HK", "exchange": "HK", "industry": "博彩", "sector": "消费"},
 ]
 
 
@@ -73,16 +106,31 @@ def seed(force: bool = False):
         print("Force mode: clearing existing data...")
         _clear_data(db)
 
-    # 1. 插入股票
-    print("\n[1/8] Seeding stocks from East Money API...")
+    # 0. 同步全量A股+港股列表（新浪+腾讯）
+    print("\n[0/8] Syncing full stock list (A-share + HK)...")
+    from app.services.stock_sync import sync_stock_list
+    sync_result = sync_stock_list(db, market="ALL")
+    print(f"  Synced: {sync_result['total']} stocks (A-share + HK)")
+
+    # 1. 插入核心股票（带行业/板块信息）
+    print("\n[1/8] Seeding core stocks with industry info...")
     stock_map = {}
     for s in CORE_STOCKS:
-        stock = Stock(**s)
-        db.add(stock)
-        db.flush()
-        stock_map[s["symbol"]] = stock.id
+        existing_stock = db.query(Stock).filter(Stock.symbol == s["symbol"]).first()
+        if existing_stock:
+            # 更新行业信息
+            existing_stock.industry = s.get("industry", "")
+            existing_stock.sector = s.get("sector", "")
+            existing_stock.market = s.get("market", existing_stock.market)
+            existing_stock.exchange = s.get("exchange", existing_stock.exchange)
+            stock_map[s["symbol"]] = existing_stock.id
+        else:
+            stock = Stock(**s)
+            db.add(stock)
+            db.flush()
+            stock_map[s["symbol"]] = stock.id
     db.commit()
-    print(f"  Inserted {len(CORE_STOCKS)} stocks")
+    print(f"  Core stocks: {len(CORE_STOCKS)} with industry data")
 
     # 2. 获取真实行情数据 (腾讯 API)
     print("\n[2/8] Fetching real daily prices...")
@@ -312,17 +360,35 @@ def _score_stocks(db, stock_map, score_date):
     """对所有股票评分，确保信号类型多样化"""
     # 强制注入高评分的股票（模拟不同市场状态下的优质标的）
     forced_scores = {
-        # BUY 信号 (total >= 85)
-        "600519": {"total": 90, "q": 27, "v": 18, "g": 17, "t": 16, "r": 12, "reason": "白酒龙头，业绩稳健增长，估值合理，趋势确认"},
-        "600036": {"total": 87, "q": 26, "v": 17, "g": 16, "t": 16, "r": 12, "reason": "零售银行标杆，资产质量优异，估值低位"},
+        # BUY 信号 (total >= 85) - A股
+        "600519": {"total": 92, "q": 28, "v": 18, "g": 17, "t": 17, "r": 12, "reason": "白酒龙头，业绩稳健增长，估值合理，趋势确认"},
+        "600036": {"total": 88, "q": 26, "v": 17, "g": 16, "t": 17, "r": 12, "reason": "零售银行标杆，资产质量优异，估值低位"},
+        "000333": {"total": 86, "q": 25, "v": 17, "g": 16, "t": 16, "r": 12, "reason": "家电龙头，全球化布局完善，业绩确定性强"},
+        "300760": {"total": 85, "q": 26, "v": 15, "g": 17, "t": 15, "r": 12, "reason": "医疗器械龙头，国产替代加速，海外拓展顺利"},
+        # BUY 信号 - 港股
+        "00700": {"total": 89, "q": 27, "v": 17, "g": 16, "t": 17, "r": 12, "reason": "互联网巨头，游戏和广告业务复苏，AI布局领先"},
+        "03690": {"total": 87, "q": 25, "v": 16, "g": 18, "t": 16, "r": 12, "reason": "本地生活龙头，外卖和到店业务稳健增长"},
         # ADD 信号 (total >= 75)
-        "600276": {"total": 80, "q": 24, "v": 15, "g": 16, "t": 14, "r": 11, "reason": "创新药龙头，研发管线丰富，趋势向好"},
-        "000858": {"total": 78, "q": 25, "v": 14, "g": 15, "t": 14, "r": 10, "reason": "高端白酒品牌力强，业绩增长确定性高"},
+        "600276": {"total": 82, "q": 24, "v": 16, "g": 16, "t": 14, "r": 12, "reason": "创新药龙头，研发管线丰富，趋势向好"},
+        "000858": {"total": 80, "q": 25, "v": 15, "g": 15, "t": 15, "r": 10, "reason": "高端白酒品牌力强，业绩增长确定性高"},
+        "000568": {"total": 79, "q": 25, "v": 14, "g": 15, "t": 15, "r": 10, "reason": "浓香白酒龙头，国窖系列持续放量"},
+        "601166": {"total": 78, "q": 24, "v": 16, "g": 13, "t": 14, "r": 11, "reason": "股份行龙头，财富管理转型成效显著"},
+        "09988": {"total": 77, "q": 23, "v": 15, "g": 14, "t": 14, "r": 11, "reason": "电商巨头，云业务增长强劲，估值修复中"},
+        "01810": {"total": 76, "q": 22, "v": 14, "g": 16, "t": 14, "r": 10, "reason": "消费电子龙头，SU7汽车业务打开增长空间"},
+        "09633": {"total": 75, "q": 24, "v": 14, "g": 14, "t": 13, "r": 10, "reason": "饮用水龙头，品牌护城河深厚，现金流优秀"},
         # WATCH 信号 (total >= 65)
-        "300750": {"total": 72, "q": 22, "v": 13, "g": 14, "t": 13, "r": 10, "reason": "新能源电池龙头，成长性好但估值偏高"},
-        "0700":  {"total": 70, "q": 23, "v": 12, "g": 13, "t": 12, "r": 10, "reason": "互联网巨头，基本面良好但趋势待确认"},
-        "601318": {"total": 68, "q": 21, "v": 14, "g": 12, "t": 12, "r": 9, "reason": "综合金融集团，估值合理但成长放缓"},
-        "000001": {"total": 66, "q": 20, "v": 14, "g": 11, "t": 12, "r": 9, "reason": "零售银行转型中，估值低位但趋势未确认"},
+        "300750": {"total": 73, "q": 22, "v": 13, "g": 15, "t": 13, "r": 10, "reason": "新能源电池龙头，成长性好但估值偏高"},
+        "601318": {"total": 71, "q": 22, "v": 14, "g": 12, "t": 13, "r": 10, "reason": "综合金融集团，估值合理但成长放缓"},
+        "000001": {"total": 68, "q": 20, "v": 14, "g": 12, "t": 13, "r": 9, "reason": "零售银行转型中，估值低位但趋势未确认"},
+        "601012": {"total": 67, "q": 20, "v": 12, "g": 14, "t": 12, "r": 9, "reason": "光伏龙头，行业产能过剩压力待消化"},
+        "02020": {"total": 72, "q": 23, "v": 13, "g": 14, "t": 12, "r": 10, "reason": "运动服饰龙头，多品牌战略推进中"},
+        "01299": {"total": 70, "q": 23, "v": 13, "g": 12, "t": 12, "r": 10, "reason": "亚太保险龙头，新业务价值增长稳健"},
+        "09999": {"total": 69, "q": 22, "v": 13, "g": 13, "t": 12, "r": 9, "reason": "游戏龙头，海外业务拓展顺利"},
+        "600030": {"total": 66, "q": 21, "v": 13, "g": 11, "t": 12, "r": 9, "reason": "券商龙头，受益资本市场改革"},
+        # REDUCE 信号 (total < 65)
+        "002304": {"total": 58, "q": 18, "v": 12, "g": 10, "t": 10, "r": 8, "reason": "白酒行业竞争加剧，省外扩张承压"},
+        "600585": {"total": 55, "q": 17, "v": 13, "g": 8, "t": 10, "r": 7, "reason": "水泥需求疲软，行业景气度下行"},
+        "00027": {"total": 52, "q": 16, "v": 11, "g": 9, "t": 9, "r": 7, "reason": "博彩业复苏不及预期，贵宾业务持续萎缩"},
     }
 
     count = 0
@@ -472,7 +538,7 @@ def _is_nan(val):
 
 
 def refresh_daily():
-    """每日增量刷新 - 只更新核心股票池（避免 Yahoo Finance 限流）"""
+    """每日增量刷新 - 更新所有有行情数据的股票"""
     import time
     print(f"[{date.today()}] Daily refresh starting...")
     db = SessionLocal()
@@ -480,20 +546,24 @@ def refresh_daily():
     today = date.today()
     yesterday = today - timedelta(days=1)
 
-    # 只更新核心股票池（有完整数据的股票）
-    core_symbols = [s["symbol"] for s in CORE_STOCKS]
-    stocks = db.query(Stock).filter(Stock.symbol.in_(core_symbols)).all()
-    if not stocks:
-        print("No core stocks in database. Run seed first.")
+    # 获取所有有行情数据的股票（不仅限于CORE_STOCKS）
+    stocks_with_prices = db.query(Stock).filter(
+        Stock.status == "ACTIVE",
+        Stock.id.in_(db.query(DailyPrice.stock_id).distinct())
+    ).all()
+
+    if not stocks_with_prices:
+        print("No stocks with price data. Run seed first.")
         db.close()
         return
 
-    stock_map = {s.symbol: s.id for s in stocks}
+    stock_map = {s.symbol: s.id for s in stocks_with_prices}
+    print(f"  Found {len(stock_map)} stocks with existing data")
 
     # 更新行情
     for idx, (symbol, stock_id) in enumerate(stock_map.items()):
         if idx > 0 and not _use_mock:
-            time.sleep(3)
+            time.sleep(1)  # 减少等待时间
         try:
             df = provider.fetch_daily_prices(symbol, yesterday, today)
             for _, row in df.iterrows():
@@ -520,10 +590,12 @@ def refresh_daily():
                 )
                 db.add(dp)
             db.commit()
-            print(f"  {symbol}: refreshed")
         except Exception as e:
             db.rollback()
-            print(f"  Error refreshing {symbol}: {e}")
+            if idx < 5:  # 只打印前几个错误
+                print(f"  Error refreshing {symbol}: {e}")
+
+    print(f"  Price refresh completed for {len(stock_map)} stocks")
 
     # 重新评分和生成信号
     _score_stocks(db, stock_map, today)
@@ -531,6 +603,7 @@ def refresh_daily():
     generate_daily_report(db, today)
 
     db.close()
+    print(f"[{today}] Daily refresh completed.")
     print(f"[{today}] Daily refresh completed.")
 
 
