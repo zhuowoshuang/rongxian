@@ -60,13 +60,13 @@ export default function AdminPage() {
 
       <TabSwitch
         tabs={[
-          { key: "overview", label: "📊 系统概览" },
-          { key: "stocks", label: "📈 股票管理" },
-          { key: "scores", label: "⭐ 评分管理" },
-          { key: "signals", label: "📡 信号管理" },
-          { key: "users", label: "👥 用户管理" },
-          { key: "database", label: "🗄️ 数据库" },
-          { key: "api-config", label: "🔑 API配置" },
+          { key: "overview", label: t("admin.tabOverview") },
+          { key: "stocks", label: t("admin.tabStocks") },
+          { key: "scores", label: t("admin.tabScores") },
+          { key: "signals", label: t("admin.tabSignals") },
+          { key: "users", label: t("admin.tabUsers") },
+          { key: "database", label: t("admin.tabDatabase") },
+          { key: "api-config", label: t("admin.tabApiConfig") },
         ]}
         active={activeTab}
         onChange={setActiveTab}
@@ -107,6 +107,7 @@ function Badge({ text, className }: { text: string; className?: string }) {
 }
 
 function SearchBar({ value, onChange, placeholder, onSearch }: { value: string; onChange: (v: string) => void; placeholder?: string; onSearch?: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex gap-2">
       <div className="relative flex-1">
@@ -115,7 +116,7 @@ function SearchBar({ value, onChange, placeholder, onSearch }: { value: string; 
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSearch?.()}
-          placeholder={placeholder || "搜索..."}
+          placeholder={placeholder || t("admin.search")}
           className="w-full pl-9 pr-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text placeholder:text-dark-muted focus:outline-none focus:border-primary-500/40"
         />
       </div>
@@ -129,15 +130,16 @@ function SearchBar({ value, onChange, placeholder, onSearch }: { value: string; 
 }
 
 function Pagination({ page, total, pageSize, onChange }: { page: number; total: number; pageSize: number; onChange: (p: number) => void }) {
+  const { t } = useTranslation();
   const pages = Math.ceil(total / pageSize);
   if (pages <= 1) return null;
   return (
     <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/[0.06]">
-      <span className="text-xs text-dark-muted">共 {total} 条</span>
+      <span className="text-xs text-dark-muted">{t("admin.totalItems", { total: String(total) })}</span>
       <div className="flex items-center gap-2">
-        <button onClick={() => onChange(page - 1)} disabled={page <= 1} className="px-3 py-1.5 text-xs rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] disabled:opacity-30 transition-colors">上一页</button>
+        <button onClick={() => onChange(page - 1)} disabled={page <= 1} className="px-3 py-1.5 text-xs rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] disabled:opacity-30 transition-colors">{t("admin.prevPage")}</button>
         <span className="text-xs text-dark-muted px-2">{page} / {pages}</span>
-        <button onClick={() => onChange(page + 1)} disabled={page >= pages} className="px-3 py-1.5 text-xs rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] disabled:opacity-30 transition-colors">下一页</button>
+        <button onClick={() => onChange(page + 1)} disabled={page >= pages} className="px-3 py-1.5 text-xs rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] disabled:opacity-30 transition-colors">{t("admin.nextPage")}</button>
       </div>
     </div>
   );
@@ -161,12 +163,12 @@ function OverviewTab() {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
       {stats && [
-        { label: "股票总数", value: stats.total_stocks, icon: <BarChart3 className="w-5 h-5" />, color: "text-primary-400" },
-        { label: "信号总数", value: stats.total_signals, icon: <Zap className="w-5 h-5" />, color: "text-emerald-400" },
-        { label: "用户总数", value: stats.total_users, icon: <Users className="w-5 h-5" />, color: "text-blue-400" },
-        { label: "报告总数", value: stats.total_reports, icon: <Activity className="w-5 h-5" />, color: "text-amber-400" },
-        { label: "数据库大小", value: stats.db_size, icon: <Database className="w-5 h-5" />, color: "text-purple-400" },
-        { label: "券商研报", value: stats.total_research_reports, icon: <Key className="w-5 h-5" />, color: "text-cyan-400" },
+        { label: t("admin.stockCount"), value: stats.total_stocks, icon: <BarChart3 className="w-5 h-5" />, color: "text-primary-400" },
+        { label: t("admin.signalCount"), value: stats.total_signals, icon: <Zap className="w-5 h-5" />, color: "text-emerald-400" },
+        { label: t("admin.userCount"), value: stats.total_users, icon: <Users className="w-5 h-5" />, color: "text-blue-400" },
+        { label: t("admin.reportCount"), value: stats.total_reports, icon: <Activity className="w-5 h-5" />, color: "text-amber-400" },
+        { label: t("admin.dbSizeLabel"), value: stats.db_size, icon: <Database className="w-5 h-5" />, color: "text-purple-400" },
+        { label: t("admin.researchReports"), value: stats.total_research_reports, icon: <Key className="w-5 h-5" />, color: "text-cyan-400" },
       ].map((m) => (
         <GlassCard key={m.label} className="text-center">
           <div className={`${m.color} mb-2 flex justify-center`}>{m.icon}</div>
@@ -183,6 +185,7 @@ function OverviewTab() {
 // ══════════════════════════════════════════════════════════
 
 function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
+  const { t } = useTranslation();
   const [stocks, setStocks] = useState<any>({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -206,7 +209,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       const result = await adminSyncStocks(market || "ALL");
       showMsg("ok", result.message);
       fetchStocks();
-    } catch (e: any) { showMsg("err", e.message || "同步失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.syncFailed")); }
     setSyncing(false);
   };
 
@@ -218,7 +221,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       showMsg("ok", `已添加 ${addingSymbol}: ${result.steps?.join(", ")}`);
       setAddingSymbol("");
       fetchStocks();
-    } catch (e: any) { showMsg("err", e.message || "添加失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.addFailed")); }
     setAdding(false);
   };
 
@@ -228,7 +231,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       showMsg("ok", `${stock.symbol} 已更新`);
       setEditing(null);
       fetchStocks();
-    } catch (e: any) { showMsg("err", e.message || "更新失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.updateFailed")); }
   };
 
   const handleDelete = async (stock: any) => {
@@ -237,7 +240,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       await deleteAdminStock(stock.id);
       showMsg("ok", `${stock.symbol} 已删除`);
       fetchStocks();
-    } catch (e: any) { showMsg("err", e.message || "删除失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.deleteFailed")); }
   };
 
   return (
@@ -246,23 +249,23 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       <GlassCard>
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex-1 min-w-[200px]">
-            <SearchBar value={keyword} onChange={setKeyword} placeholder="搜索股票代码或名称..." onSearch={() => { setPage(1); fetchStocks(); }} />
+            <SearchBar value={keyword} onChange={setKeyword} placeholder={t("admin.stockSearch")} onSearch={() => { setPage(1); fetchStocks(); }} />
           </div>
           <select value={market} onChange={(e) => { setMarket(e.target.value); setPage(1); }} className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text">
-            <option value="">全部市场</option>
-            <option value="A_SHARE">A股</option>
-            <option value="HK">港股</option>
+            <option value="">{t("common.all")}</option>
+            <option value="A_SHARE">{t("admin.aShare")}</option>
+            <option value="HK">{t("admin.hk")}</option>
           </select>
           <button onClick={handleSync} disabled={syncing} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg text-sm hover:bg-emerald-500/25 disabled:opacity-50 transition-colors">
             <Download className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "同步中..." : "同步全部"}
+            {syncing ? t("admin.syncing") : t("admin.syncAll")}
           </button>
         </div>
         <div className="flex gap-2 mt-3">
           <input value={addingSymbol} onChange={(e) => setAddingSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAdd()} placeholder="输入股票代码，如 600519" className="flex-1 max-w-xs px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text placeholder:text-dark-muted" />
           <button onClick={handleAdd} disabled={adding || !addingSymbol.trim()} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500/15 text-primary-400 border border-primary-500/30 rounded-lg text-sm hover:bg-primary-500/25 disabled:opacity-50 transition-colors">
             <Plus className="w-4 h-4" />
-            {adding ? "获取中..." : "添加+获取数据"}
+            {adding ? t("admin.fetching") : t("admin.addFetch")}
           </button>
         </div>
       </GlassCard>
@@ -274,7 +277,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06]">
-                  {["代码", "名称", "市场", "行业", "状态", "操作"].map((h) => (
+                  {[t("admin.stockCode"), t("admin.stockName"), t("admin.stockMarket"), t("admin.stockIndustry"), t("admin.stockStatus"), t("admin.stockActions")].map((h) => (
                     <th key={h} className="text-left py-3 px-3 text-dark-muted font-medium text-xs">{h}</th>
                   ))}
                 </tr>
@@ -290,7 +293,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                         <span className="text-dark-text">{s.name}</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3"><Badge text={s.market === "A_SHARE" ? "A股" : "港股"} /></td>
+                    <td className="py-2.5 px-3"><Badge text={s.market === "A_SHARE" ? t("admin.aShare") : t("admin.hk")} /></td>
                     <td className="py-2.5 px-3 text-xs text-dark-muted">{s.industry || "-"}</td>
                     <td className="py-2.5 px-3">
                       {editing?.id === s.id ? (
@@ -312,8 +315,8 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                           </>
                         ) : (
                           <>
-                            <button onClick={() => setEditing({ ...s })} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors" title="编辑"><Edit3 className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => handleDelete(s)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors" title="删除"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setEditing({ ...s })} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors" title={t("admin.edit")}><Edit3 className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleDelete(s)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors" title={t("admin.delete")}><Trash2 className="w-3.5 h-3.5" /></button>
                           </>
                         )}
                       </div>
@@ -321,7 +324,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                   </tr>
                 ))}
                 {(!stocks.items || stocks.items.length === 0) && (
-                  <tr><td colSpan={6} className="py-12 text-center"><EmptyState message="暂无股票数据，点击「同步全部」或「添加」开始" /></td></tr>
+                  <tr><td colSpan={6} className="py-12 text-center"><EmptyState message={t("admin.noStocks")} /></td></tr>
                 )}
               </tbody>
             </table>
@@ -338,6 +341,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
 // ══════════════════════════════════════════════════════════
 
 function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
+  const { t } = useTranslation();
   const [scores, setScores] = useState<any>({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -366,7 +370,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       showMsg("ok", `评分已更新，总分: ${result.total_score}`);
       setEditing(null);
       fetchScores();
-    } catch (e: any) { showMsg("err", e.message || "更新失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.updateFailed")); }
   };
 
   return (
@@ -374,7 +378,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
       <GlassCard>
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex-1 min-w-[200px]">
-            <SearchBar value={keyword} onChange={setKeyword} placeholder="搜索股票代码或名称..." onSearch={() => { setPage(1); fetchScores(); }} />
+            <SearchBar value={keyword} onChange={setKeyword} placeholder={t("admin.scoreSearch")} onSearch={() => { setPage(1); fetchScores(); }} />
           </div>
           <select value={rating} onChange={(e) => { setRating(e.target.value); setPage(1); }} className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text">
             <option value="">全部评级</option>
@@ -389,7 +393,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06]">
-                  {["代码", "名称", "总分", "质量", "估值", "成长", "趋势", "风险", "评级", "日期", "操作"].map((h) => (
+                  {[t("admin.code"), t("admin.name"), t("admin.totalScore"), t("admin.quality"), t("admin.valuation"), t("admin.growth"), t("admin.trend"), t("admin.risk"), t("admin.rating"), t("admin.date"), t("admin.actions")].map((h) => (
                     <th key={h} className="text-left py-3 px-2 text-dark-muted font-medium text-xs whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -429,7 +433,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                               <button onClick={() => setEditing(null)} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors"><X className="w-3.5 h-3.5" /></button>
                             </>
                           ) : (
-                            <button onClick={() => setEditing({ ...s })} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors" title="编辑评分"><Edit3 className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setEditing({ ...s })} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors" title={t("admin.editScore")}><Edit3 className="w-3.5 h-3.5" /></button>
                           )}
                         </div>
                       </td>
@@ -451,6 +455,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
 // ══════════════════════════════════════════════════════════
 
 function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
+  const { t } = useTranslation();
   const [signals, setSignals] = useState<any>({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -476,10 +481,10 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
         stop_loss_price: editing.stop_loss_price,
         status: editing.status,
       });
-      showMsg("ok", "信号已更新");
+      showMsg("ok", t("admin.signalUpdated"));
       setEditing(null);
       fetchSignals();
-    } catch (e: any) { showMsg("err", e.message || "更新失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.updateFailed")); }
   };
 
   const handleExpire = async (sig: any) => {
@@ -487,16 +492,16 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
       await updateAdminSignal(sig.id, { status: "EXPIRED" });
       showMsg("ok", `${sig.signal_type} 信号已作废`);
       fetchSignals();
-    } catch (e: any) { showMsg("err", e.message || "操作失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
   const handleDelete = async (sig: any) => {
     if (!confirm(`确认删除 ${sig.symbol} 的 ${sig.signal_type} 信号？`)) return;
     try {
       await deleteAdminSignal(sig.id);
-      showMsg("ok", "信号已删除");
+      showMsg("ok", t("admin.signalDeleted"));
       fetchSignals();
-    } catch (e: any) { showMsg("err", e.message || "删除失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.deleteFailed")); }
   };
 
   return (
@@ -504,7 +509,7 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
       <GlassCard>
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex-1 min-w-[200px]">
-            <SearchBar value={keyword} onChange={setKeyword} placeholder="搜索股票代码或名称..." onSearch={() => { setPage(1); fetchSignals(); }} />
+            <SearchBar value={keyword} onChange={setKeyword} placeholder={t("admin.signalSearch")} onSearch={() => { setPage(1); fetchSignals(); }} />
           </div>
           <select value={sigType} onChange={(e) => { setSigType(e.target.value); setPage(1); }} className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text">
             <option value="">全部类型</option>
@@ -525,7 +530,7 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.06]">
-                  {["代码", "名称", "信号", "入场价", "目标价", "止损价", "状态", "日期", "操作"].map((h) => (
+                  {[t("admin.code"), t("admin.name"), t("admin.signal"), t("admin.entryPrice"), t("admin.targetPrice"), t("admin.stopLoss"), t("admin.status"), t("admin.date"), t("admin.actions")].map((h) => (
                     <th key={h} className="text-left py-3 px-2 text-dark-muted font-medium text-xs whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -574,9 +579,9 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
                             </>
                           ) : (
                             <>
-                              <button onClick={() => setEditing({ ...s })} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors" title="编辑"><Edit3 className="w-3.5 h-3.5" /></button>
-                              {s.status === "ACTIVE" && <button onClick={() => handleExpire(s)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors" title="作废"><RefreshCw className="w-3.5 h-3.5" /></button>}
-                              <button onClick={() => handleDelete(s)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors" title="删除"><Trash2 className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => setEditing({ ...s })} className="p-1.5 rounded-lg bg-white/[0.05] text-dark-muted hover:bg-white/[0.1] transition-colors" title={t("admin.edit")}><Edit3 className="w-3.5 h-3.5" /></button>
+                              {s.status === "ACTIVE" && <button onClick={() => handleExpire(s)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors" title={t("admin.void")}><RefreshCw className="w-3.5 h-3.5" /></button>}
+                              <button onClick={() => handleDelete(s)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors" title={t("admin.delete")}><Trash2 className="w-3.5 h-3.5" /></button>
                             </>
                           )}
                         </div>
@@ -613,7 +618,7 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
       await updateAdminUser(user.id, { role: newRole });
       setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: newRole } : u));
       showMsg("ok", `${user.username} → ${newRole}`);
-    } catch (e: any) { showMsg("err", e.message || "操作失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
   const handleActiveToggle = async (user: any) => {
@@ -625,8 +630,8 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
         await updateAdminUser(user.id, { is_active: true });
         setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, is_active: true } : u));
       }
-      showMsg("ok", `${user.username} ${user.is_active ? "已禁用" : "已启用"}`);
-    } catch (e: any) { showMsg("err", e.message || "操作失败"); }
+      showMsg("ok", `${user.username} ${user.is_active ? t("admin.userDisabled") : t("admin.userActive")}`);
+    } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
   if (loading) return <SkeletonCard />;
@@ -637,7 +642,7 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06]">
-              {["ID", "用户名", "显示名", "角色", "状态", "注册时间", "操作"].map((h) => (
+              {["ID", t("admin.userUsername"), t("admin.userDisplayName"), t("admin.userRole"), t("admin.userStatus"), t("admin.userCreatedAt"), t("admin.userActions")].map((h) => (
                 <th key={h} className="text-left py-3 px-3 text-dark-muted font-medium text-xs">{h}</th>
               ))}
             </tr>
@@ -652,16 +657,16 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
                   <Badge text={u.role} className={u.role === "admin" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"} />
                 </td>
                 <td className="py-3 px-3">
-                  <Badge text={u.is_active ? "正常" : "禁用"} className={u.is_active ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"} />
+                  <Badge text={u.is_active ? t("admin.userActive") : t("admin.userDisabled")} className={u.is_active ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"} />
                 </td>
                 <td className="py-3 px-3 text-xs text-dark-muted">{u.created_at?.slice(0, 19)}</td>
                 <td className="py-3 px-3">
                   <div className="flex gap-1">
                     <button onClick={() => handleRoleToggle(u)} className="text-xs px-2 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-dark-muted hover:text-white transition-colors">
-                      {u.role === "admin" ? "设为用户" : "设为管理员"}
+                      {u.role === "admin" ? t("admin.setAsUser") : t("admin.setAsAdmin")}
                     </button>
                     <button onClick={() => handleActiveToggle(u)} className={`text-xs px-2 py-1 rounded-lg transition-colors ${u.is_active ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"}`}>
-                      {u.is_active ? "禁用" : "启用"}
+                      {u.is_active ? t("admin.userDisable") : t("admin.userEnable")}
                     </button>
                   </div>
                 </td>
@@ -766,6 +771,7 @@ function DatabaseTab() {
 // ══════════════════════════════════════════════════════════
 
 function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
+  const { t } = useTranslation();
   const [configs, setConfigs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(null);
@@ -793,7 +799,7 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
       await deleteApiConfig(id);
       showMsg("ok", "已删除");
       fetchConfigs();
-    } catch (e: any) { showMsg("err", e.message || "删除失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.deleteFailed")); }
   };
 
   const handleTest = async (id: number) => {
@@ -801,7 +807,7 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
     try {
       const result = await testApiConfig(id);
       showMsg(result.status === "ok" ? "ok" : "err", result.message);
-    } catch (e: any) { showMsg("err", e.message || "测试失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.testFailed")); }
     setTesting(null);
   };
 
@@ -809,12 +815,12 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
 
   return (
     <div className="space-y-4">
-      <GlassCard title="API供应商配置">
+      <GlassCard title={t("admin.apiProviderConfig")}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/[0.06]">
-                {["供应商", "显示名称", "API密钥", "状态", "每日限额", "操作"].map((h) => (
+                {[t("admin.provider"), t("admin.displayNameLabel"), t("admin.apiKey"), t("admin.status"), t("admin.dailyQuota"), t("admin.actions")].map((h) => (
                   <th key={h} className="text-left py-3 px-3 text-dark-muted font-medium text-xs">{h}</th>
                 ))}
               </tr>
@@ -824,29 +830,29 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
                 <tr key={c.id} className="border-b border-white/[0.03] hover:bg-white/[0.03]">
                   <td className="py-2.5 px-3 font-mono text-xs text-primary-400">{c.provider}</td>
                   <td className="py-2.5 px-3 text-dark-text">{c.display_name}</td>
-                  <td className="py-2.5 px-3 font-mono text-xs text-dark-muted">{c.api_key || "未配置"}</td>
+                  <td className="py-2.5 px-3 font-mono text-xs text-dark-muted">{c.api_key || t("admin.notConfigured")}</td>
                   <td className="py-2.5 px-3">
-                    <Badge text={c.is_enabled ? "启用" : "禁用"} className={c.is_enabled ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"} />
+                    <Badge text={c.is_enabled ? t("admin.enable") : t("admin.disable")} className={c.is_enabled ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"} />
                   </td>
                   <td className="py-2.5 px-3 text-right font-mono text-dark-text">{c.daily_limit}</td>
                   <td className="py-2.5 px-3">
                     <div className="flex gap-1">
-                      <button onClick={() => setEditing(c)} className="text-xs px-2 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-dark-muted">编辑</button>
+                      <button onClick={() => setEditing(c)} className="text-xs px-2 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-dark-muted">{t("admin.edit")}</button>
                       <button onClick={() => handleTest(c.id)} disabled={testing === c.id} className="text-xs px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50">
-                        {testing === c.id ? "..." : "测试"}
+                        {testing === c.id ? "..." : t("admin.test")}
                       </button>
-                      <button onClick={() => handleDelete(c.id, c.provider)} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20">删除</button>
+                      <button onClick={() => handleDelete(c.id, c.provider)} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20">{t("admin.delete")}</button>
                     </div>
                   </td>
                 </tr>
               ))}
-              {configs.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-dark-muted">暂无配置</td></tr>}
+              {configs.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-dark-muted">{t("admin.noData")}</td></tr>}
             </tbody>
           </table>
         </div>
       </GlassCard>
 
-      <GlassCard title={editing ? `编辑 ${editing.provider}` : "添加 API 配置"}>
+      <GlassCard title={editing ? `${t("admin.edit")} ${editing.provider}` : t("admin.addApiConfig")}>
         <ApiConfigForm initial={editing} onSave={handleSave} onCancel={() => setEditing(null)} />
       </GlassCard>
     </div>
@@ -854,6 +860,7 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
 }
 
 function ApiConfigForm({ initial, onSave, onCancel }: { initial?: any; onSave: (c: any) => void; onCancel: () => void }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     provider: initial?.provider || "",
     display_name: initial?.display_name || "",
@@ -883,32 +890,32 @@ function ApiConfigForm({ initial, onSave, onCancel }: { initial?: any; onSave: (
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div>
-        <label className="text-xs text-dark-muted">供应商标识</label>
+        <label className="text-xs text-dark-muted">{t("admin.provider")}</label>
         <input value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} placeholder="eastmoney" className="w-full mt-1" />
       </div>
       <div>
-        <label className="text-xs text-dark-muted">显示名称</label>
-        <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} placeholder="东方财富" className="w-full mt-1" />
+        <label className="text-xs text-dark-muted">{t("admin.displayNameLabel")}</label>
+        <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} placeholder={t("admin.eastmoney")} className="w-full mt-1" />
       </div>
       <div>
-        <label className="text-xs text-dark-muted">API密钥</label>
-        <input type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="留空则不更新" className="w-full mt-1" />
+        <label className="text-xs text-dark-muted">{t("admin.apiKey")}</label>
+        <input type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={t("admin.leaveEmpty")} className="w-full mt-1" />
       </div>
       <div>
         <label className="text-xs text-dark-muted">基础URL</label>
         <input value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.example.com" className="w-full mt-1" />
       </div>
       <div>
-        <label className="text-xs text-dark-muted">每日限额</label>
+        <label className="text-xs text-dark-muted">{t("admin.dailyQuota")}</label>
         <input type="number" value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: parseInt(e.target.value) || 0 })} className="w-full mt-1" />
       </div>
       <div className="flex items-end gap-3 col-span-2">
         <label className="flex items-center gap-2 text-sm text-dark-text">
           <input type="checkbox" checked={form.is_enabled} onChange={(e) => setForm({ ...form, is_enabled: e.target.checked })} />
-          启用
+          {t("admin.enable")}
         </label>
-        <button onClick={() => onSave(form)} className="px-4 py-2 bg-primary-500/15 text-primary-400 border border-primary-500/30 rounded-lg text-sm hover:bg-primary-500/25 transition-colors">保存</button>
-        {onCancel && <button onClick={onCancel} className="px-4 py-2 bg-white/[0.05] text-dark-muted border border-white/[0.08] rounded-lg text-sm hover:bg-white/[0.1] transition-colors">取消</button>}
+        <button onClick={() => onSave(form)} className="px-4 py-2 bg-primary-500/15 text-primary-400 border border-primary-500/30 rounded-lg text-sm hover:bg-primary-500/25 transition-colors">{t("admin.save")}</button>
+        {onCancel && <button onClick={onCancel} className="px-4 py-2 bg-white/[0.05] text-dark-muted border border-white/[0.08] rounded-lg text-sm hover:bg-white/[0.1] transition-colors">{t("admin.cancel")}</button>}
       </div>
     </div>
   );
