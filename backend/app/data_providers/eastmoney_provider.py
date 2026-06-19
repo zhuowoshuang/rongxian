@@ -176,12 +176,53 @@ class EastMoneyProvider(DataProviderBase):
             return pd.DataFrame()
 
     def _fetch_hk_daily(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
-        tc = f"hk{symbol}"
-        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tc},day,{start_date},{end_date},500,"
-        data = _curl_get(url)
-        stock_data = data.get("data", {}).get(tc, {})
-        klines = stock_data.get("day", stock_data.get("qfqday", []))
-        return self._parse_klines(klines)
+        # 优先用腾讯 API，失败则用 akshare
+        try:
+            tc = f"hk{symbol}"
+            url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tc},day,{start_date},{end_date},500,"
+            data = _curl_get(url)
+            stock_data = data.get("data", {}).get(tc, {})
+            klines = stock_data.get("day", stock_data.get("qfqday", []))
+            if klines:
+                return self._parse_klines(klines)
+        except Exception:
+            pass
+        # akshare 备选
+        return self._fetch_hk_daily_akshare(symbol, start_date, end_date)
+
+    def _fetch_hk_daily_akshare(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+        """使用 akshare 获取港股日线数据"""
+        try:
+            import akshare as ak
+            df = ak.stock_hk_daily(symbol=symbol, adjust="qfq")
+            if df.empty:
+                return pd.DataFrame()
+            # 过滤日期范围
+            df["date"] = pd.to_datetime(df["date"])
+            mask = (df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)
+            df = df[mask].copy()
+            if df.empty:
+                return pd.DataFrame()
+            rows = []
+            for _, row in df.iterrows():
+                rows.append({
+                    "trade_date": row["date"].date(),
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                    "volume": int(float(row["volume"])) if row.get("volume") else 0,
+                    "turnover": 0,
+                    "turnover_rate": 0,
+                    "market_cap": None,
+                    "pe": None,
+                    "pb": None,
+                    "dividend_yield": None,
+                })
+            return pd.DataFrame(rows)
+        except Exception as e:
+            logger.debug(f"akshare HK fetch failed for {symbol}: {e}")
+            return pd.DataFrame()
 
     def _parse_klines(self, klines: list) -> pd.DataFrame:
         rows = []
