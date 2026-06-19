@@ -15,6 +15,7 @@ build/
 .env
 .env.local
 .env.production
+.jwt_secret
 
 # IDE
 .vscode/

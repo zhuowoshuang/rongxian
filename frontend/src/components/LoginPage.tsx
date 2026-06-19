@@ -18,6 +18,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; // 防止重复提交（H-11 竞态条件修复）
     setError("");
     setLoading(true);
     try {

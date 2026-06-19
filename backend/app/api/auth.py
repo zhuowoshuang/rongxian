@@ -1,20 +1,66 @@
 """认证 API"""
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from jose import jwt, JWTError
 import bcrypt
+import time
+import logging
+from collections import defaultdict
 
 from app.db.session import get_db
 from app.models.user import User
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 SECRET_KEY = settings.JWT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+
+# 简易速率限制：{ip:action: [timestamps]}
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_REGISTER_LIMIT = 10  # 每小时最多注册次数
+_LOGIN_LIMIT = 20     # 每分钟最多登录尝试
+_RATE_WINDOW = 60     # 登录窗口（秒）
+_REGISTER_WINDOW = 3600  # 注册窗口（秒）
+_last_cleanup: float = time.time()
+_CLEANUP_INTERVAL = 300  # 5 分钟清理一次
+
+
+def _cleanup_expired_keys(now: float):
+    """清理所有时间戳已过期的 key，防止内存泄漏"""
+    expired = []
+    for k, v in _login_attempts.items():
+        active = [t for t in v if now - t < _REGISTER_WINDOW]
+        if not active:
+            expired.append(k)
+        else:
+            _login_attempts[k] = active
+    for k in expired:
+        del _login_attempts[k]
+
+
+def _check_rate_limit(ip: str, action: str, limit: int, window: int) -> bool:
+    """检查速率限制，返回 True 表示允许"""
+    global _last_cleanup
+    now = time.time()
+
+    # 定期清理过期 key 防止内存泄漏
+    if now - _last_cleanup > _CLEANUP_INTERVAL:
+        _cleanup_expired_keys(now)
+        _last_cleanup = now
+
+    key = f"{ip}:{action}"
+    attempts = _login_attempts[key]
+    # 清理过期记录
+    _login_attempts[key] = [t for t in attempts if now - t < window]
+    if len(_login_attempts[key]) >= limit:
+        return False
+    _login_attempts[key].append(now)
+    return True
 
 
 class LoginRequest(BaseModel):
@@ -26,6 +72,23 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
     display_name: str = ""
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2 or len(v) > 30:
+            raise ValueError("用户名长度需在 2-30 之间")
+        if not v.isascii():
+            raise ValueError("用户名仅支持英文字母、数字和下划线")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("密码长度至少 6 位")
+        return v
 
 
 class TokenResponse(BaseModel):
@@ -72,8 +135,11 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """用户登录"""
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip, "login", _LOGIN_LIMIT, _RATE_WINDOW):
+        raise HTTPException(status_code=429, detail="登录尝试过于频繁，请 1 分钟后再试")
     user = db.query(User).filter(User.username == req.username).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
@@ -89,8 +155,11 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """用户注册"""
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip, "register", _REGISTER_LIMIT, _REGISTER_WINDOW):
+        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
     existing = db.query(User).filter(User.username == req.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="用户名已存在")

@@ -9,7 +9,7 @@ import { Settings, Mail, MessageSquare, Database, AlertCircle, CheckCircle } fro
 export default function SettingsPage() {
   const { t } = useTranslation();
   const [config, setConfig] = useState({
-    email_smtp_host: "smtp.qq.com",
+    email_smtp_host: "",
     email_smtp_port: "465",
     email_sender: "",
     email_password: "",
@@ -33,6 +33,16 @@ export default function SettingsPage() {
   const handleChange = (key: string, value: string) => { setConfig((prev) => ({ ...prev, [key]: value })); setMsg(null); };
 
   const handleSave = async () => {
+    // H-09: 表单校验
+    if (config.email_sender && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.email_sender)) {
+      setMsg({ type: "err", text: "发件邮箱格式不正确" }); return;
+    }
+    if (config.email_recipient && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.email_recipient)) {
+      setMsg({ type: "err", text: "收件邮箱格式不正确" }); return;
+    }
+    if (config.email_smtp_port && !/^\d+$/.test(config.email_smtp_port)) {
+      setMsg({ type: "err", text: "SMTP 端口必须为数字" }); return;
+    }
     setSaving(true); setMsg(null);
     try { const res = await updateNotificationConfig(config); setMsg({ type: "ok", text: res.message || t("settings.saveSuccess") }); }
     catch (e: any) { setMsg({ type: "err", text: e.message || t("settings.saveFailed") }); }

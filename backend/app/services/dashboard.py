@@ -72,14 +72,25 @@ def get_dashboard_data(db: Session, today: date) -> dict:
         .limit(10)
         .all()
     )
+
+    # 批量查询最新价格（消除 N+1）
+    top_stock_ids = [stock.id for _, stock in top_signals]
+    top_price_map = {}
+    if top_stock_ids:
+        latest_date_sq = db.query(
+            DailyPrice.stock_id,
+            func.max(DailyPrice.trade_date).label("max_date")
+        ).filter(DailyPrice.stock_id.in_(top_stock_ids)).group_by(DailyPrice.stock_id).subquery()
+        top_prices = db.query(DailyPrice).join(
+            latest_date_sq,
+            (DailyPrice.stock_id == latest_date_sq.c.stock_id) &
+            (DailyPrice.trade_date == latest_date_sq.c.max_date)
+        ).all()
+        top_price_map = {p.stock_id: p for p in top_prices}
+
     top_signal_list = []
     for sig, stock in top_signals:
-        latest_price = (
-            db.query(DailyPrice)
-            .filter(DailyPrice.stock_id == stock.id)
-            .order_by(DailyPrice.trade_date.desc())
-            .first()
-        )
+        latest_price = top_price_map.get(stock.id)
         top_signal_list.append({
             "symbol": stock.symbol,
             "name": stock.name,

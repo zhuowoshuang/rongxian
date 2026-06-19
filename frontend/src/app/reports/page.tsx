@@ -8,6 +8,7 @@ import TabSwitch from "@/components/ui/TabSwitch";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { FileText, Download, Search } from "lucide-react";
+import { showToast } from "@/components/ui/Toast";
 
 export default function ReportsPage() {
   const { t } = useTranslation();
@@ -20,9 +21,9 @@ export default function ReportsPage() {
   const [downloadingPdf, setDownloadingPdf] = useState<number | null>(null);
 
   const styleOptions = [
-    { key: "steady", label: "稳健型", icon: "🛡️", desc: "低波动·高股息·蓝筹优先", color: "from-blue-500/20 to-blue-600/10 border-blue-500/30 text-blue-300" },
-    { key: "aggressive", label: "进取型", icon: "🚀", desc: "高成长·强趋势·超额收益", color: "from-purple-500/20 to-purple-600/10 border-purple-500/30 text-purple-300" },
-    { key: "conservative", label: "保守型", icon: "🏦", desc: "低估值·高安全·本金优先", color: "from-green-500/20 to-green-600/10 border-green-500/30 text-green-300" },
+    { key: "steady", label: t("style.steady"), icon: "🛡️", desc: t("style.steady.desc"), color: "from-blue-500/20 to-blue-600/10 border-blue-500/30 text-blue-300" },
+    { key: "aggressive", label: t("style.aggressive"), icon: "🚀", desc: t("style.aggressive.desc"), color: "from-purple-500/20 to-purple-600/10 border-purple-500/30 text-purple-300" },
+    { key: "conservative", label: t("style.conservative"), icon: "🏦", desc: t("style.conservative.desc"), color: "from-green-500/20 to-green-600/10 border-green-500/30 text-green-300" },
   ];
 
   const [researchReports, setResearchReports] = useState<any[]>([]);
@@ -50,6 +51,7 @@ export default function ReportsPage() {
     setLoading(true);
     getReports({ report_type: reportType || undefined, page_size: 50 })
       .then((data) => setReports(data.items || []))
+      .catch(() => { setReports([]); })
       .finally(() => setLoading(false));
   };
 
@@ -57,6 +59,7 @@ export default function ReportsPage() {
     setResearchLoading(true);
     getResearchReports({ symbol, page, page_size: 20 })
       .then((data) => { setResearchReports(data.reports || []); setResearchTotal(data.total || 0); setResearchPage(page); })
+      .catch(() => { setResearchReports([]); setResearchTotal(0); })
       .finally(() => setResearchLoading(false));
   };
 
@@ -104,8 +107,12 @@ export default function ReportsPage() {
     try {
       if (type === "STOCK" && selectedStock) await generateReport({ report_type: "STOCK", stock_symbol: selectedStock.symbol });
       else if (type === "DAILY") await generateReport({ report_type: "DAILY", style: selectedStyle || undefined });
+      showToast("success", t("reports.generateSuccess"));
       fetchReports();
-    } catch (e) { console.error(e); }
+    } catch (e: any) {
+      console.error(e);
+      showToast("error", e.message || t("reports.generateError"));
+    }
     setGenerating(false);
   };
 
@@ -113,8 +120,12 @@ export default function ReportsPage() {
     setGenerating(true);
     try {
       await generateStyleReport(style);
+      showToast("success", t("reports.styleGenerateSuccess"));
       fetchReports();
-    } catch (e) { console.error(e); }
+    } catch (e: any) {
+      console.error(e);
+      showToast("error", e.message || t("reports.styleGenerateError"));
+    }
     setGenerating(false);
   };
 
@@ -122,7 +133,11 @@ export default function ReportsPage() {
     setDownloadingPdf(id);
     try {
       await downloadReportPdf(id, `${title}.pdf`);
-    } catch (e) { console.error(e); alert("PDF下载失败，请确认后端已安装 xhtml2pdf"); }
+      showToast("success", t("reports.pdfStarted"));
+    } catch (e: any) {
+      console.error(e);
+      showToast("error", e.message || t("reports.pdfError"));
+    }
     setDownloadingPdf(null);
   };
 
@@ -151,7 +166,7 @@ export default function ReportsPage() {
             <div className="space-y-4">
               {/* 风格选择器 */}
               <div>
-                <label className="text-xs text-dark-muted mb-2 block">投资风格（可选，影响每日策略报告内容）</label>
+                <label className="text-xs text-dark-muted mb-2 block">{t("reports.styleHint")}</label>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setSelectedStyle("")}
@@ -159,7 +174,7 @@ export default function ReportsPage() {
                       selectedStyle === "" ? "bg-white/[0.08] border-white/[0.15] text-white" : "bg-white/[0.03] border-white/[0.06] text-dark-muted hover:bg-white/[0.05]"
                     }`}
                   >
-                    📊 通用版
+                    {t("reports.general")}
                   </button>
                   {styleOptions.map((s) => (
                     <button
@@ -197,7 +212,7 @@ export default function ReportsPage() {
                       {showStockSearch && stockKeyword.length > 0 && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-dark-card border border-white/[0.08] rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
                           {stockSearching ? (
-                            <div className="px-3 py-2 text-xs text-dark-muted">搜索中...</div>
+                            <div className="px-3 py-2 text-xs text-dark-muted">{t("reports.searching")}</div>
                           ) : stockResults.length > 0 ? (
                             stockResults.map((s) => (
                               <button key={s.symbol} onClick={() => { setSelectedStock(s); setStockKeyword(""); setShowStockSearch(false); setStockResults([]); }}
@@ -207,7 +222,7 @@ export default function ReportsPage() {
                               </button>
                             ))
                           ) : (
-                            <div className="px-3 py-2 text-xs text-dark-muted">未找到匹配的股票</div>
+                            <div className="px-3 py-2 text-xs text-dark-muted">{t("reports.noMatch")}</div>
                           )}
                         </div>
                       )}
@@ -219,7 +234,7 @@ export default function ReportsPage() {
 
               {/* 风格专属报告生成 */}
               <div className="border-t border-white/[0.06] pt-4">
-                <label className="text-xs text-dark-muted mb-2 block">一键生成风格专属策略报告</label>
+                <label className="text-xs text-dark-muted mb-2 block">{t("reports.generateStyleHint")}</label>
                 <div className="flex gap-3">
                   {styleOptions.map((s) => (
                     <button
@@ -228,7 +243,7 @@ export default function ReportsPage() {
                       disabled={generating}
                       className={`flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all border bg-gradient-to-br ${s.color} disabled:opacity-50 hover:brightness-110`}
                     >
-                      {s.icon} 生成{s.label}报告
+                      {s.icon} {t("reports.generateStyleReport", { style: s.label })}
                     </button>
                   ))}
                 </div>
@@ -237,7 +252,7 @@ export default function ReportsPage() {
           </GlassCard>
 
           <TabSwitch
-            tabs={[{ key: "", label: t("common.all") }, { key: "DAILY", label: t("reports.strategyReport") }, { key: "STYLE", label: "风格报告" }, { key: "STOCK", label: t("reports.stockReport") }]}
+            tabs={[{ key: "", label: t("common.all") }, { key: "DAILY", label: t("reports.strategyReport") }, { key: "STYLE", label: t("reports.styleReport") }, { key: "STOCK", label: t("reports.stockReport") }]}
             active={reportType}
             onChange={setReportType}
             className="w-fit"
@@ -252,11 +267,11 @@ export default function ReportsPage() {
                   className={`w-full text-left card ${selectedReport?.id === r.id ? "!border-primary-500/40 !bg-primary-500/10" : ""}`}>
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${r.report_type === "DAILY" ? "bg-blue-500/10 text-blue-400" : r.report_type === "STYLE" ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"}`}>
-                      {r.report_type === "DAILY" ? t("reports.strategyReport") : r.report_type === "STYLE" ? "风格报告" : t("reports.stockReport")}
+                      {r.report_type === "DAILY" ? t("reports.strategyReport") : r.report_type === "STYLE" ? t("reports.styleReport") : t("reports.stockReport")}
                     </span>
                     {r.style && (
                       <span className={`text-[10px] px-2 py-0.5 rounded-full ${r.style === "steady" ? "bg-blue-500/10 text-blue-300" : r.style === "aggressive" ? "bg-purple-500/10 text-purple-300" : "bg-green-500/10 text-green-300"}`}>
-                        {r.style === "steady" ? "🛡️稳健" : r.style === "aggressive" ? "🚀进取" : "🏦保守"}
+                        {r.style === "steady" ? "🛡️" + t("style.steady") : r.style === "aggressive" ? "🚀" + t("style.aggressive") : "🏦" + t("style.conservative")}
                       </span>
                     )}
                     <span className="text-xs text-dark-muted">{r.report_date}</span>
@@ -273,11 +288,11 @@ export default function ReportsPage() {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h2 className="text-lg font-bold text-white">{selectedReport.title}</h2>
-                      <p className="text-xs text-dark-muted mt-1">{selectedReport.report_date} - {selectedReport.report_type === "DAILY" ? t("reports.strategyReport") : selectedReport.report_type === "STYLE" ? "风格报告" : t("reports.stockReport")}</p>
+                      <p className="text-xs text-dark-muted mt-1">{selectedReport.report_date} - {selectedReport.report_type === "DAILY" ? t("reports.strategyReport") : selectedReport.report_type === "STYLE" ? t("reports.styleReport") : t("reports.stockReport")}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs px-3 py-1 rounded-full ${selectedReport.report_type === "DAILY" ? "bg-blue-500/10 text-blue-400" : selectedReport.report_type === "STYLE" ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"}`}>
-                        {selectedReport.report_type === "DAILY" ? t("reports.strategyReport") : selectedReport.report_type === "STYLE" ? "风格报告" : t("reports.stockReport")}
+                        {selectedReport.report_type === "DAILY" ? t("reports.strategyReport") : selectedReport.report_type === "STYLE" ? t("reports.styleReport") : t("reports.stockReport")}
                       </span>
                       <button
                         onClick={() => handleDownloadPdf(selectedReport.id, selectedReport.title)}
@@ -285,7 +300,7 @@ export default function ReportsPage() {
                         className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition-colors text-xs disabled:opacity-50"
                       >
                         <Download size={14} />
-                        {downloadingPdf === selectedReport.id ? "生成中..." : "下载PDF"}
+                        {downloadingPdf === selectedReport.id ? t("reports.downloading") : t("reports.downloadPdf")}
                       </button>
                     </div>
                   </div>
@@ -320,7 +335,7 @@ export default function ReportsPage() {
                 {showRStockSearch && rStockKeyword.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-dark-card border border-white/[0.08] rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
                     {rStockSearching ? (
-                      <div className="px-3 py-2 text-xs text-dark-muted">搜索中...</div>
+                      <div className="px-3 py-2 text-xs text-dark-muted">{t("reports.searching")}</div>
                     ) : rStockResults.length > 0 ? (
                       rStockResults.map((s) => (
                         <button key={s.symbol} onClick={() => { setResearchStock(s); setRStockKeyword(""); setShowRStockSearch(false); setRStockResults([]); }}
@@ -329,7 +344,7 @@ export default function ReportsPage() {
                         </button>
                       ))
                     ) : (
-                      <div className="px-3 py-2 text-xs text-dark-muted">未找到匹配的股票</div>
+                      <div className="px-3 py-2 text-xs text-dark-muted">{t("reports.noMatch")}</div>
                     )}
                   </div>
                 )}

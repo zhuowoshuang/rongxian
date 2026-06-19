@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
@@ -140,4 +141,13 @@ def root():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    """健康检查（含数据库连通性）"""
+    from app.db.session import SessionLocal
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"status": "ok" if db_ok else "degraded", "database": "ok" if db_ok else "error"}

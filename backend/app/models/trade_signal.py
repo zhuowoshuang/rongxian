@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Float, ForeignKey, DateTime, func, JSON
+from sqlalchemy import Column, Integer, String, Date, Float, ForeignKey, DateTime, func, JSON, Index
 from app.db.base import Base
 
 
@@ -7,7 +7,7 @@ class TradeSignal(Base):
     __tablename__ = "trade_signals"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    stock_id = Column(Integer, ForeignKey("stocks.id"), nullable=False, index=True)
+    stock_id = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False, index=True)
     signal_date = Column(Date, nullable=False, index=True)
     signal_type = Column(String(20), nullable=False, comment="信号类型: BUY/ADD/WATCH/REDUCE/SELL")
     signal_strength = Column(Integer, comment="信号强度 1-5")
@@ -20,3 +20,8 @@ class TradeSignal(Base):
     risk_json = Column(JSON, comment="风险提示 JSON")
     status = Column(String(20), default="ACTIVE", comment="状态: ACTIVE/EXPIRED/EXECUTED")
     created_at = Column(DateTime, server_default=func.now())
+
+    # M-03: 复合索引
+    __table_args__ = (
+        Index("idx_signal_stock_date", "stock_id", "signal_date"),
+    )

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { searchStocks } from "@/lib/api";
 import type { StockSearchResult } from "@/types";
@@ -13,6 +13,7 @@ export default function TopSearch() {
   const [results, setResults] = useState<StockSearchResult[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const router = useRouter();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearch = useCallback(async (value: string) => {
     setKeyword(value);
@@ -21,14 +22,20 @@ export default function TopSearch() {
       setShowDropdown(false);
       return;
     }
-    try {
-      const data = await searchStocks(value);
-      setResults(data);
-      setShowDropdown(true);
-    } catch {
-      setResults([]);
-    }
+    // H-07: debounce 300ms
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const data = await searchStocks(value);
+        setResults(data);
+        setShowDropdown(true);
+      } catch {
+        setResults([]);
+      }
+    }, 300);
   }, []);
+
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const handleSelect = (symbol: string) => {
     setShowDropdown(false);
@@ -45,7 +52,7 @@ export default function TopSearch() {
           onChange={(e) => handleSearch(e.target.value)}
           onFocus={() => results.length > 0 && setShowDropdown(true)}
           onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-          placeholder={t("reports.stockSearch") + "（A股+港股）..."}
+          placeholder={t("common.searchPlaceholder")}
           className="w-full pl-10 pr-4 py-2.5 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-dark-text placeholder:text-dark-muted/50 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/30 backdrop-blur-xl"
         />
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted" />

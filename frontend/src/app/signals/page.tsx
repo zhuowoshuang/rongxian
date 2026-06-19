@@ -9,11 +9,13 @@ import { useTranslation } from "@/lib/i18n";
 import GlassCard from "@/components/ui/GlassCard";
 import TabSwitch from "@/components/ui/TabSwitch";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { showToast } from "@/components/ui/Toast";
 
 export default function SignalsPage() {
   const { t } = useTranslation();
   const [data, setData] = useState<SignalListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [market, setMarket] = useState<string>("");
   const [signalType, setSignalType] = useState<string>("");
   const [page, setPage] = useState(1);
@@ -21,8 +23,10 @@ export default function SignalsPage() {
 
   useEffect(() => {
     setLoading(true);
+    setError(false);
     getSignals({ market: market || undefined, signal_type: signalType || undefined, page, page_size: 20 })
       .then(setData)
+      .catch(() => { setError(true); showToast("error", t("common.loadFailed")); })
       .finally(() => setLoading(false));
   }, [market, signalType, page]);
 
@@ -61,6 +65,13 @@ export default function SignalsPage() {
 
       {loading ? (
         <SkeletonTable />
+      ) : error ? (
+        <GlassCard>
+          <div className="text-center py-8 text-dark-muted">
+            <p className="mb-3">{t("common.loadingError")}</p>
+            <button onClick={() => { setLoading(true); setError(false); getSignals({ market: market || undefined, signal_type: signalType || undefined, page, page_size: 20 }).then(setData).catch(() => setError(true)).finally(() => setLoading(false)); }} className="btn-primary px-4 py-2 text-sm">{t("common.retry")}</button>
+          </div>
+        </GlassCard>
       ) : (
         <>
           <GlassCard>

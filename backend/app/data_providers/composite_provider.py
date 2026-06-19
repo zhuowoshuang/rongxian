@@ -1,17 +1,20 @@
 """
 组合数据源 - 路由各方法到最优数据源
 行情: 腾讯 (快速, 无限流, 通过 EastMoneyProvider)
-财务: Yahoo Finance (A股 + 港股) -> 东方财富 fallback
+财务: 雪球 (A股+港股) -> Yahoo Finance -> 东方财富 fallback
 研报: 东方财富
 指数: 腾讯 (通过 EastMoneyProvider)
-股票列表: Sina + Tencent (在 stock_sync 模块中)
+股票列表: 东方财富批量API (全量覆盖)
 """
 from datetime import date
+import logging
 import pandas as pd
 
 from app.data_providers.base import DataProviderBase
 from app.data_providers.yahoo_provider import YahooFinanceProvider
 from app.data_providers.eastmoney_provider import EastMoneyProvider
+
+logger = logging.getLogger(__name__)
 
 
 class CompositeProvider(DataProviderBase):
@@ -20,6 +23,19 @@ class CompositeProvider(DataProviderBase):
     def __init__(self):
         self.yahoo = YahooFinanceProvider()
         self.eastmoney = EastMoneyProvider()
+        self._xueqiu = None
+
+    @property
+    def xueqiu(self):
+        """延迟加载雪球提供者"""
+        if self._xueqiu is None:
+            try:
+                from app.data_providers.xueqiu_provider import XueqiuProvider
+                self._xueqiu = XueqiuProvider()
+            except Exception as e:
+                logger.warning(f"雪球提供者初始化失败: {e}")
+                self._xueqiu = False  # 标记为不可用
+        return self._xueqiu if self._xueqiu is not False else None
 
     def fetch_stock_list(self, market: str) -> pd.DataFrame:
         return self.eastmoney.fetch_stock_list(market)
@@ -28,18 +44,51 @@ class CompositeProvider(DataProviderBase):
         return self.eastmoney.fetch_daily_prices(symbol, start_date, end_date)
 
     def fetch_financial_metrics(self, symbol: str) -> pd.DataFrame:
-        df = self.yahoo.fetch_financial_metrics(symbol)
-        if df.empty:
-            df = self.eastmoney.fetch_financial_metrics(symbol)
-        return df
+        """财务数据: 雪球 -> Yahoo -> 东方财富"""
+        # 优先雪球（覆盖 A 股+港股）
+        if self.xueqiu:
+            try:
+                df = self.xueqiu.fetch_financial_metrics(symbol)
+                if not df.empty:
+                    return df
+            except Exception as e:
+                logger.debug(f"雪球财务数据失败 {symbol}: {e}")
+
+        # 其次 Yahoo
+        try:
+            df = self.yahoo.fetch_financial_metrics(symbol)
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+
+        # 最后东方财富
+        return self.eastmoney.fetch_financial_metrics(symbol)
 
     def fetch_market_index(self, market: str) -> list:
         return self.eastmoney.fetch_market_index(market)
 
     def fetch_news(self, symbol: str, limit: int = 10) -> list:
+        """新闻: 雪球 -> Yahoo"""
+        if self.xueqiu:
+            try:
+                news = self.xueqiu.fetch_news(symbol, limit)
+                if news:
+                    return news
+            except Exception:
+                pass
         return self.yahoo.fetch_news(symbol, limit)
 
     def fetch_valuation(self, symbol: str) -> dict:
+        """估值: 雪球 -> Yahoo -> 东方财富"""
+        if self.xueqiu:
+            try:
+                val = self.xueqiu.fetch_valuation(symbol)
+                if val and val.get("pe"):
+                    return val
+            except Exception as e:
+                logger.debug(f"雪球估值失败 {symbol}: {e}")
+
         val = self.yahoo.fetch_valuation(symbol)
         if not val:
             val = self.eastmoney.fetch_valuation(symbol)

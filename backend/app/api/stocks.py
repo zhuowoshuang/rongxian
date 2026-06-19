@@ -208,10 +208,36 @@ def add_stock_and_fetch(
             vol_ma5 = np.mean(volumes[max(0, i-4):i+1])
             vol_ma20 = np.mean(volumes[max(0, i-19):i+1])
 
-            ema12 = np.mean(closes[max(0, i-11):i+1])
-            ema26 = np.mean(closes[max(0, i-25):i+1]) if i >= 25 else ema12
-            macd = ema12 - ema26
-            macd_signal = macd * 0.8
+            # EMA 计算
+            def _ema(data, period):
+                ema_vals = [data[0]]
+                k = 2 / (period + 1)
+                for v in data[1:]:
+                    ema_vals.append(v * k + ema_vals[-1] * (1 - k))
+                return ema_vals
+
+            ema12_arr = _ema(closes, 12)
+            ema26_arr = _ema(closes, 26) if len(closes) >= 26 else ema12_arr
+            dif_arr = [ema12_arr[j] - ema26_arr[j] for j in range(len(closes))]
+            dea_arr = _ema(dif_arr, 9)
+            macd = dif_arr[-1]
+            macd_signal = dea_arr[-1]
+
+            # RSI14 计算
+            if len(closes) >= 15:
+                deltas = [closes[j] - closes[j-1] for j in range(1, len(closes))]
+                gains = [d if d > 0 else 0 for d in deltas[-14:]]
+                losses = [-d if d < 0 else 0 for d in deltas[-14:]]
+                avg_gain = np.mean(gains)
+                avg_loss = np.mean(losses)
+                rsi14 = round(100 - 100 / (1 + avg_gain / avg_loss), 2) if avg_loss > 0 else (100.0 if avg_gain > 0 else 50.0)
+            else:
+                rsi14 = None
+
+            # 布林带计算 (MA20 ± 2σ)
+            boll_std = np.std(closes[max(0, i-19):i+1], ddof=1)
+            boll_upper = ma20 + 2 * boll_std
+            boll_lower = ma20 - 2 * boll_std
 
             existing_tech = db.query(TechnicalIndicator).filter(
                 TechnicalIndicator.stock_id == stock_id,
@@ -227,10 +253,10 @@ def add_stock_and_fetch(
                     macd=round(macd, 4),
                     macd_signal=round(macd_signal, 4),
                     macd_hist=round(macd - macd_signal, 4),
-                    rsi14=round(50 + np.random.uniform(-15, 15), 2),
-                    boll_upper=round(ma20 * 1.02, 2),
+                    rsi14=rsi14,
+                    boll_upper=round(boll_upper, 2),
                     boll_middle=round(ma20, 2),
-                    boll_lower=round(ma20 * 0.98, 2),
+                    boll_lower=round(boll_lower, 2),
                     volume_ma5=round(vol_ma5, 0),
                     volume_ma20=round(vol_ma20, 0),
                 )

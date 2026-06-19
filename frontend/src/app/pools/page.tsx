@@ -8,12 +8,14 @@ import { useTranslation } from "@/lib/i18n";
 import GlassCard from "@/components/ui/GlassCard";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { showToast } from "@/components/ui/Toast";
 
 export default function PoolsPage() {
   const { t } = useTranslation();
   const [activeType, setActiveType] = useState("quality");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const router = useRouter();
 
   const poolTypes = [
@@ -21,16 +23,18 @@ export default function PoolsPage() {
     { key: "undervalued", label: t("pool.undervalued"), color: "bg-blue-500" },
     { key: "trend", label: t("pool.trend"), color: "bg-purple-500" },
     { key: "risk", label: t("pool.risk"), color: "bg-red-500" },
-    { key: "steady", label: "🛡️ 稳健优选", color: "bg-blue-400" },
-    { key: "aggressive", label: "🚀 进取优选", color: "bg-purple-400" },
-    { key: "conservative", label: "🏦 保守优选", color: "bg-green-400" },
-    { key: "volatile", label: "⚡ 周波动>2%", color: "bg-orange-400" },
+    { key: "steady", label: t("pool.steady"), color: "bg-blue-400" },
+    { key: "aggressive", label: t("pool.aggressive"), color: "bg-purple-400" },
+    { key: "conservative", label: t("pool.conservative"), color: "bg-green-400" },
+    { key: "volatile", label: t("pool.volatile"), color: "bg-orange-400" },
   ];
 
   useEffect(() => {
     setLoading(true);
+    setError(false);
     getStockPool(activeType)
       .then(setData)
+      .catch(() => { setError(true); showToast("error", t("common.loadFailed")); })
       .finally(() => setLoading(false));
   }, [activeType]);
 
@@ -60,6 +64,13 @@ export default function PoolsPage() {
 
       {loading ? (
         <SkeletonTable />
+      ) : error ? (
+        <GlassCard>
+          <div className="text-center py-8 text-dark-muted">
+            <p className="mb-3">{t("common.loadingError")}</p>
+            <button onClick={() => { setLoading(true); setError(false); getStockPool(activeType).then(setData).catch(() => setError(true)).finally(() => setLoading(false)); }} className="btn-primary px-4 py-2 text-sm">{t("common.retry")}</button>
+          </div>
+        </GlassCard>
       ) : (
         <GlassCard>
           <div className="flex items-center justify-between mb-4">
@@ -73,7 +84,7 @@ export default function PoolsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/[0.06]">
-                    {[t("pools.title").includes("Pool") ? "Code" : "代码", t("stocks.name"), t("stocks.market"), t("pools.industry"), t("pools.totalScore"), t("pools.quality"), t("pools.valuation"), t("pools.growth"), t("pools.trend"), t("pools.risk"), t("pools.rating"), t("pools.reason"), t("pools.action")].map((h) => (
+                    {[t("pools.code"), t("stocks.name"), t("stocks.market"), t("pools.industry"), t("pools.totalScore"), t("pools.quality"), t("pools.valuation"), t("pools.growth"), t("pools.trend"), t("pools.risk"), t("pools.rating"), t("pools.reason"), t("pools.action")].map((h) => (
                       <th key={h} className="text-left py-3 px-3 text-dark-muted text-xs">{h}</th>
                     ))}
                   </tr>

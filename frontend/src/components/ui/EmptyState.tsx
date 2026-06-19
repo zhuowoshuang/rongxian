@@ -12,7 +12,7 @@ export default function EmptyState({ message = "暂无数据", description }: Pr
         <InboxIcon className="w-8 h-8 text-dark-muted" />
       </div>
       <p className="text-sm text-dark-muted">{message}</p>
-      {description && <p className="text-xs text-gray-600 mt-1">{description}</p>}
+      {description && <p className="text-xs text-dark-muted mt-1">{description}</p>}
     </div>
   );
 }

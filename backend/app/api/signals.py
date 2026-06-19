@@ -2,6 +2,7 @@
 from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.db.session import get_db
 from app.models.trade_signal import TradeSignal
@@ -27,8 +28,6 @@ def list_signals(
     if signal_date:
         query = query.filter(TradeSignal.signal_date == signal_date)
     else:
-        # 默认取最新日期
-        from sqlalchemy import func
         latest = db.query(func.max(TradeSignal.signal_date)).scalar()
         if latest:
             query = query.filter(TradeSignal.signal_date == latest)
@@ -41,14 +40,24 @@ def list_signals(
     total = query.count()
     results = query.order_by(TradeSignal.signal_strength.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
+    # 批量查询最新价格（消除 N+1）
+    stock_ids = [stock.id for _, stock in results]
+    price_map = {}
+    if stock_ids:
+        latest_date_sq = db.query(
+            DailyPrice.stock_id,
+            func.max(DailyPrice.trade_date).label("max_date")
+        ).filter(DailyPrice.stock_id.in_(stock_ids)).group_by(DailyPrice.stock_id).subquery()
+        prices = db.query(DailyPrice).join(
+            latest_date_sq,
+            (DailyPrice.stock_id == latest_date_sq.c.stock_id) &
+            (DailyPrice.trade_date == latest_date_sq.c.max_date)
+        ).all()
+        price_map = {p.stock_id: p for p in prices}
+
     items = []
     for sig, stock in results:
-        price = (
-            db.query(DailyPrice)
-            .filter(DailyPrice.stock_id == stock.id)
-            .order_by(DailyPrice.trade_date.desc())
-            .first()
-        )
+        price = price_map.get(stock.id)
         items.append({
             "id": sig.id,
             "stock_id": stock.id,

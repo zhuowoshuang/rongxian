@@ -14,6 +14,7 @@ import StockPoolCard from "@/components/StockPoolCard";
 import RiskAlertCard from "@/components/RiskAlertCard";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { RefreshCw } from "lucide-react";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -21,12 +22,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchData = () => {
+    setLoading(true);
+    setError(null);
     getDashboard()
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { fetchData(); }, []);
 
   if (loading) {
     return (
@@ -50,12 +55,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center max-w-md">
           <EmptyState message={error || t("common.error")} />
-          <div className="mt-4 p-4 card text-xs text-dark-muted text-left space-y-1">
-            <p>{t("common.startSteps")}</p>
-            <p>1. cd backend</p>
-            <p>2. python -m app.seed</p>
-            <p>3. uvicorn app.main:app --reload --port 8000</p>
-          </div>
+          <button onClick={fetchData} className="mt-4 btn-primary px-6 py-2 text-sm">{t("common.retry")}</button>
         </div>
       </div>
     );
@@ -63,8 +63,15 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen p-6 space-y-6">
-      <div className="max-w-[1400px] mx-auto">
-        <TopSearch />
+      <div className="max-w-[1400px] mx-auto flex items-center gap-3">
+        <div className="flex-1"><TopSearch /></div>
+        <button
+          onClick={fetchData}
+          className="p-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] text-dark-muted hover:text-white hover:bg-white/[0.08] transition-colors"
+          title={t("common.refresh")}
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -83,7 +90,7 @@ export default function DashboardPage() {
             {t("dashboard.todaySignals")}
           </h2>
           <span className="text-xs text-dark-muted">
-            {t("dashboard.signalCount", { count: Object.values(data.signal_distribution).reduce((a, b) => a + b, 0) })}
+            {t("dashboard.signalCount", { count: data.signal_distribution ? Object.values(data.signal_distribution).reduce((a, b) => a + b, 0) : 0 })}
           </span>
         </div>
         <SignalTable signals={data.top_signals} />

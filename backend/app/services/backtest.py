@@ -62,14 +62,27 @@ def run_backtest(
     if len(trade_dates) < 5:
         return {"error": f"历史数据不足（仅 {len(trade_dates)} 个交易日），无法回测"}
 
-    # 获取每只股票的评分（用最新评分作为基准）
-    latest_scores = {}
-    for sid in stock_ids:
-        sc = db.query(StockScore).filter(StockScore.stock_id == sid).order_by(StockScore.score_date.desc()).first()
-        if sc:
-            latest_scores[sid] = sc.total_score
-        else:
-            latest_scores[sid] = 50.0  # 默认分
+    # 预加载所有评分数据，按 stock_id 和 score_date 索引（消除前瞻偏差）
+    all_score_records = (
+        db.query(StockScore)
+        .filter(StockScore.stock_id.in_(stock_ids))
+        .order_by(StockScore.score_date)
+        .all()
+    )
+    scores_by_stock: dict[int, list] = {}
+    for sc in all_score_records:
+        scores_by_stock.setdefault(sc.stock_id, []).append((sc.score_date, sc.total_score))
+
+    def _get_score_at_date(sid: int, ref_date: date) -> float:
+        """获取某只股票在 ref_date 当天或之前最近的评分（消除前瞻偏差）"""
+        records = scores_by_stock.get(sid, [])
+        best = None
+        for score_date, total_score in records:
+            if score_date <= ref_date:
+                best = total_score
+            else:
+                break
+        return best if best is not None else 50.0
 
     # 确定调仓频率
     if rebalance == "quarterly":
@@ -128,8 +141,8 @@ def run_backtest(
         if i - last_rebalance_idx >= rebalance_days or i == 0:
             last_rebalance_idx = i
 
-            # 按评分排序，选前 N 只
-            scored = [(sid, latest_scores.get(sid, 50)) for sid in stock_ids if sid in day_prices]
+            # 按评分排序，选前 N 只（使用回测时点的评分，消除前瞻偏差）
+            scored = [(sid, _get_score_at_date(sid, td)) for sid in stock_ids if sid in day_prices]
             scored.sort(key=lambda x: x[1], reverse=True)
 
             # 选评分 >= 65 的股票（买入/加仓级别）

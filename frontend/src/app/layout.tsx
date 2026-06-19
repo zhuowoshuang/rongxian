@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth";
 import { LanguageProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
 import AuthGuard from "@/components/AuthGuard";
+import ToastContainer from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
   title: "融衔 - A股港股智能分析系统",
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <AuthGuard>
                 {children}
               </AuthGuard>
+              <ToastContainer />
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>

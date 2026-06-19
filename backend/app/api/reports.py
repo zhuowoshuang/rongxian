@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.models.report import Report
 from app.models.research_report import ResearchReport
 from app.services.report import generate_daily_report, generate_stock_report, generate_style_report
-from app.api.auth import get_member_user
+from app.api.auth import get_current_user
 
 router = APIRouter(prefix="/api/reports", tags=["报告"])
 
@@ -132,7 +132,7 @@ def generate_report(
     stock_symbol: str = Query(None, description="股票代码（STOCK类型必填）"),
     style: str = Query(None, description="投资风格: steady/aggressive/conservative"),
     db: Session = Depends(get_db),
-    user=Depends(get_member_user),
+    user=Depends(get_current_user),
 ):
     """生成报告"""
     from app.api.admin import check_user_quota, log_api_call
@@ -175,7 +175,7 @@ def generate_report(
 def generate_style_report_api(
     style: str = Query(..., description="投资风格: steady/aggressive/conservative"),
     db: Session = Depends(get_db),
-    user=Depends(get_member_user),
+    user=Depends(get_current_user),
 ):
     """生成风格化投资策略报告"""
     from app.api.admin import check_user_quota, log_api_call
@@ -203,7 +203,7 @@ def generate_style_report_api(
 
 
 @router.get("/{report_id}/pdf")
-def download_report_pdf(report_id: int, db: Session = Depends(get_db), user=Depends(get_member_user)):
+def download_report_pdf(report_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """下载报告PDF"""
     from app.api.admin import check_user_quota, log_api_call
     import time

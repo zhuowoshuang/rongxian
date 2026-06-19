@@ -15,20 +15,21 @@ import type {
 
 const API_BASE = "/api";
 
-async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
+async function fetchAPI<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const { timeoutMs, ...fetchOptions } = options || {};
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options?.headers as Record<string, string> || {}),
+    ...(fetchOptions.headers as Record<string, string> || {}),
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs || 15000);
   try {
     const res = await fetch(`${API_BASE}${path}`, {
-      ...options,
+      ...fetchOptions,
       headers,
       signal: controller.signal,
     });
@@ -36,13 +37,17 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
       if (res.status === 401 && typeof window !== "undefined") {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
-        window.location.reload();
+        // 跳转到登录页而非整页刷新，保留路由状态
+        window.location.href = "/";
       }
-      throw new Error(`API Error: ${res.status} ${res.statusText}`);
+      // 尝试解析后端返回的错误详情
+      let detail = "";
+      try { const body = await res.json(); detail = body.detail || ""; } catch {}
+      throw new Error(detail || `API Error: ${res.status} ${res.statusText}`);
     }
     return res.json();
   } catch (e: any) {
-    if (e.name === "AbortError") throw new Error("请求超时，请检查网络连接");
+    if (e.name === "AbortError") throw new Error("请求超时，报告生成耗时较长，请稍后再试");
     throw e;
   } finally {
     clearTimeout(timeout);
@@ -114,11 +119,13 @@ export const getResearchReports = (params: { symbol?: string; page?: number; pag
 export const generateReport = (params: { report_type: string; stock_symbol?: string; style?: string }) =>
   fetchAPI<any>(`/reports/generate?report_type=${params.report_type}${params.stock_symbol ? `&stock_symbol=${params.stock_symbol}` : ""}${params.style ? `&style=${params.style}` : ""}`, {
     method: "POST",
+    timeoutMs: 120000,
   });
 
 export const generateStyleReport = (style: string) =>
   fetchAPI<any>(`/reports/generate-style?style=${style}`, {
     method: "POST",
+    timeoutMs: 120000,
   });
 
 export const downloadReportPdf = async (reportId: number, filename: string) => {
@@ -126,18 +133,27 @@ export const downloadReportPdf = async (reportId: number, filename: string) => {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`/api/reports/${reportId}/pdf`, { headers });
-  if (!res.ok) throw new Error("PDF download failed");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(`/api/reports/${reportId}/pdf`, { headers, signal: controller.signal });
+    if (!res.ok) throw new Error("PDF下载失败");
 
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  window.URL.revokeObjectURL(url);
-  document.body.removeChild(a);
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (e: any) {
+    if (e.name === "AbortError") throw new Error("PDF生成超时，请稍后重试");
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 // ==================== 回测 ====================
@@ -247,3 +263,59 @@ export const getApiLogs = (params: { page?: number; page_size?: number; user_id?
 
 export const getApiStats = () =>
   fetchAPI<any>("/admin/api-stats");
+
+// ==================== 管理-股票管理 ====================
+
+export const getAdminStocks = (params: { keyword?: string; market?: string; status?: string; page?: number; page_size?: number } = {}) => {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") sp.set(k, String(v)); });
+  return fetchAPI<any>(`/admin/stocks?${sp.toString()}`);
+};
+
+export const updateAdminStock = (id: number, data: { name?: string; industry?: string; sector?: string; status?: string }) =>
+  fetchAPI<any>(`/admin/stocks/${id}`, { method: "PUT", body: JSON.stringify(data) });
+
+export const deleteAdminStock = (id: number) =>
+  fetchAPI<any>(`/admin/stocks/${id}`, { method: "DELETE" });
+
+export const adminSyncStocks = (market: string = "ALL") =>
+  fetchAPI<any>(`/admin/stocks/sync?market=${market}`, { method: "POST" });
+
+export const adminFetchStock = (symbol: string) =>
+  fetchAPI<any>(`/admin/stocks/fetch?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
+
+// ==================== 管理-评分管理 ====================
+
+export const getAdminScores = (params: { keyword?: string; rating?: string; page?: number; page_size?: number } = {}) => {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") sp.set(k, String(v)); });
+  return fetchAPI<any>(`/admin/scores?${sp.toString()}`);
+};
+
+export const updateAdminScore = (id: number, data: { quality_score?: number; valuation_score?: number; growth_score?: number; trend_score?: number; risk_score?: number; rating?: string; reason_summary?: string }) =>
+  fetchAPI<any>(`/admin/scores/${id}`, { method: "PUT", body: JSON.stringify(data) });
+
+// ==================== 管理-信号管理 ====================
+
+export const getAdminSignals = (params: { keyword?: string; signal_type?: string; status?: string; page?: number; page_size?: number } = {}) => {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") sp.set(k, String(v)); });
+  return fetchAPI<any>(`/admin/signals?${sp.toString()}`);
+};
+
+export const updateAdminSignal = (id: number, data: { signal_type?: string; signal_strength?: number; suggested_position?: number; entry_price?: number; target_price?: number; stop_loss_price?: number; holding_period?: string; status?: string }) =>
+  fetchAPI<any>(`/admin/signals/${id}`, { method: "PUT", body: JSON.stringify(data) });
+
+export const deleteAdminSignal = (id: number) =>
+  fetchAPI<any>(`/admin/signals/${id}`, { method: "DELETE" });
+
+// ==================== 管理-通用表操作 ====================
+
+export const addTableRow = (tableName: string, data: Record<string, any>) =>
+  fetchAPI<any>(`/admin/tables/${tableName}`, { method: "POST", body: JSON.stringify(data) });
+
+export const updateTableRow = (tableName: string, rowId: number, data: Record<string, any>) =>
+  fetchAPI<any>(`/admin/tables/${tableName}/${rowId}`, { method: "PUT", body: JSON.stringify(data) });
+
+export const deleteTableRow = (tableName: string, rowId: number) =>
+  fetchAPI<any>(`/admin/tables/${tableName}/${rowId}`, { method: "DELETE" });

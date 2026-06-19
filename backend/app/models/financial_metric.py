@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Float, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, Date, Float, ForeignKey, DateTime, func, Index
 from app.db.base import Base
 
 
@@ -7,7 +7,7 @@ class FinancialMetric(Base):
     __tablename__ = "financial_metrics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    stock_id = Column(Integer, ForeignKey("stocks.id"), nullable=False, index=True)
+    stock_id = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False, index=True)
     report_period = Column(String(10), nullable=False, comment="报告期: 2024Q4")
     report_date = Column(Date, comment="报告发布日期")
     revenue = Column(Float, comment="营业收入(亿)")
@@ -24,3 +24,8 @@ class FinancialMetric(Base):
     eps = Column(Float, comment="每股收益")
     book_value_per_share = Column(Float, comment="每股净资产")
     created_at = Column(DateTime, server_default=func.now())
+
+    # M-03: 复合索引
+    __table_args__ = (
+        Index("idx_fin_stock_period", "stock_id", "report_period"),
+    )

@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.db.session import get_db
 from app.models.setting import Setting
-from app.api.auth import get_current_admin
+from app.api.auth import get_current_admin, get_current_user
 
 router = APIRouter(prefix="/api/settings", tags=["设置"])
 
@@ -27,14 +27,14 @@ class NotificationConfig(BaseModel):
 
 
 @router.get("")
-def get_settings(db: Session = Depends(get_db)):
+def get_settings(db: Session = Depends(get_db), user=Depends(get_current_user)):
     """获取所有设置"""
     settings = db.query(Setting).all()
     return {s.key: {"value": s.value, "description": s.description} for s in settings}
 
 
 @router.get("/notification")
-def get_notification_config(db: Session = Depends(get_db)):
+def get_notification_config(db: Session = Depends(get_db), user=Depends(get_current_user)):
     """获取通知配置"""
     keys = [
         "email_smtp_host", "email_smtp_port", "email_sender", "email_password",

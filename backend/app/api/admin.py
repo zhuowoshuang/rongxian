@@ -47,12 +47,7 @@ def get_stats(admin: User = Depends(get_current_admin), db: Session = Depends(ge
             else:
                 db_size = f"{size_bytes / 1024:.1f} KB"
             break
-    if db_size == "N/A":
-        size_bytes = os.path.getsize(db_path)
-        if size_bytes > 1024 * 1024:
-            db_size = f"{size_bytes / 1024 / 1024:.1f} MB"
-        else:
-            db_size = f"{size_bytes / 1024:.1f} KB"
+    # db_size remains "N/A" if no candidate file found
 
     return {
         "total_stocks": total_stocks,
@@ -120,7 +115,8 @@ def list_tables(admin: User = Depends(get_current_admin), db: Session = Depends(
     result = []
     for table in sorted(tables):
         try:
-            count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar()
+            safe_name = table.replace('"', '""')
+            count = db.execute(text(f'SELECT COUNT(*) FROM "{safe_name}"')).scalar()
         except Exception:
             count = 0
         result.append({"name": table, "row_count": count})
@@ -138,21 +134,26 @@ def get_table_data(table_name: str, page: int = 1, page_size: int = 50, admin: U
     # Get columns
     columns = [col["name"] for col in inspector.get_columns(table_name)]
 
-    # Get total count
-    total = db.execute(text(f'SELECT COUNT(*) FROM "{table_name}"')).scalar()
+    # 敏感字段列表：读取时脱敏
+    SENSITIVE_FIELDS = {"password_hash", "api_key", "api_secret", "api_password", "token", "secret"}
+
+    # Get total count（转义表名中的双引号防止注入）
+    safe_name = table_name.replace('"', '""')
+    total = db.execute(text(f'SELECT COUNT(*) FROM "{safe_name}"')).scalar()
 
     # Get paginated data
     offset = (page - 1) * page_size
-    rows = db.execute(text(f'SELECT * FROM "{table_name}" LIMIT :limit OFFSET :offset'), {"limit": page_size, "offset": offset}).fetchall()
+    rows = db.execute(text(f'SELECT * FROM "{safe_name}" LIMIT :limit OFFSET :offset'), {"limit": page_size, "offset": offset}).fetchall()
 
-    # Convert rows to list of dicts
+    # Convert rows to list of dicts（敏感字段脱敏）
     data = []
     for row in rows:
         row_dict = {}
         for i, col in enumerate(columns):
             val = row[i]
-            # Convert non-serializable types
-            if val is None:
+            if col in SENSITIVE_FIELDS and val:
+                row_dict[col] = "***"
+            elif val is None:
                 row_dict[col] = None
             elif isinstance(val, (int, float, bool, str)):
                 row_dict[col] = val
@@ -219,11 +220,13 @@ def list_api_configs(admin: User = Depends(get_current_admin), db: Session = Dep
 @router.post("/api-configs")
 def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """创建或更新API配置"""
+    from app.core.config import encrypt_api_key
+
     existing = db.query(ApiConfig).filter(ApiConfig.provider == req.provider).first()
     if existing:
         if req.display_name is not None: existing.display_name = req.display_name
-        if req.api_key is not None and req.api_key != "***": existing.api_key = req.api_key
-        if req.api_secret is not None and req.api_secret != "***": existing.api_secret = req.api_secret
+        if req.api_key is not None and req.api_key != "***": existing.api_key = encrypt_api_key(req.api_key)
+        if req.api_secret is not None and req.api_secret != "***": existing.api_secret = encrypt_api_key(req.api_secret)
         if req.base_url is not None: existing.base_url = req.base_url
         if req.is_enabled is not None: existing.is_enabled = req.is_enabled
         if req.daily_limit is not None: existing.daily_limit = req.daily_limit
@@ -235,8 +238,8 @@ def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get
         config = ApiConfig(
             provider=req.provider,
             display_name=req.display_name or req.provider,
-            api_key=req.api_key,
-            api_secret=req.api_secret,
+            api_key=encrypt_api_key(req.api_key) if req.api_key else None,
+            api_secret=encrypt_api_key(req.api_secret) if req.api_secret else None,
             base_url=req.base_url,
             is_enabled=req.is_enabled if req.is_enabled is not None else True,
             daily_limit=req.daily_limit or 1000,
@@ -477,9 +480,9 @@ def check_user_quota(db: Session, user_id: int, quota_type: str) -> tuple[bool, 
     """检查用户配额，返回 (allowed, message)"""
     from sqlalchemy import func as sqlfunc
 
-    # admin 不限制
+    # admin 和 guest 不限制
     user = db.query(User).filter(User.id == user_id).first()
-    if user and user.role == "admin":
+    if user and user.role in ("admin", "guest"):
         return True, ""
 
     quota = db.query(UserApiQuota).filter(UserApiQuota.user_id == user_id).first()
@@ -526,3 +529,283 @@ def check_user_quota(db: Session, user_id: int, quota_type: str) -> tuple[bool, 
             return False, "无模拟买入权限"
 
     return True, ""
+
+
+# ==================== 股票管理 ====================
+
+class StockUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    sector: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.get("/stocks")
+def admin_list_stocks(
+    keyword: str = Query("", description="搜索关键词"),
+    market: str = Query(None, description="市场筛选"),
+    status: str = Query(None, description="状态筛选"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """管理员股票列表"""
+    from app.models.stock import Stock
+    query = db.query(Stock)
+    if keyword:
+        query = query.filter((Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%")))
+    if market:
+        query = query.filter(Stock.market == market)
+    if status:
+        query = query.filter(Stock.status == status)
+    total = query.count()
+    stocks = query.order_by(Stock.id).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": s.id, "symbol": s.symbol, "name": s.name,
+                "market": s.market, "exchange": s.exchange,
+                "industry": s.industry, "sector": s.sector,
+                "status": s.status, "currency": s.currency,
+                "created_at": str(s.created_at) if s.created_at else None,
+            }
+            for s in stocks
+        ],
+    }
+
+
+@router.put("/stocks/{stock_id}")
+def admin_update_stock(stock_id: int, req: StockUpdateRequest, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """编辑股票信息"""
+    from app.models.stock import Stock
+    stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail="股票不存在")
+    if req.name is not None:
+        stock.name = req.name
+    if req.industry is not None:
+        stock.industry = req.industry
+    if req.sector is not None:
+        stock.sector = req.sector
+    if req.status is not None:
+        if req.status not in ("ACTIVE", "DELISTED", "SUSPENDED"):
+            raise HTTPException(status_code=400, detail="状态必须是 ACTIVE、DELISTED 或 SUSPENDED")
+        stock.status = req.status
+    db.commit()
+    return {"status": "ok", "message": f"{stock.symbol} 已更新"}
+
+
+@router.delete("/stocks/{stock_id}")
+def admin_delete_stock(stock_id: int, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """删除股票及其关联数据"""
+    from app.models.stock import Stock
+    from app.models.daily_price import DailyPrice
+    from app.models.financial_metric import FinancialMetric
+    from app.models.technical_indicator import TechnicalIndicator
+    from app.models.stock_score import StockScore
+    from app.models.trade_signal import TradeSignal
+    stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail="股票不存在")
+    symbol = stock.symbol
+    for model in [DailyPrice, FinancialMetric, TechnicalIndicator, StockScore, TradeSignal]:
+        db.query(model).filter(model.stock_id == stock_id).delete()
+    db.delete(stock)
+    db.commit()
+    return {"status": "ok", "message": f"{symbol} 及关联数据已删除"}
+
+
+@router.post("/stocks/sync")
+def admin_sync_stocks(
+    market: str = Query("ALL", description="同步市场: A_SHARE / HK / ALL"),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """从东方财富同步股票列表"""
+    from app.services.stock_sync import sync_stock_list
+    result = sync_stock_list(db, market=market)
+    return {"status": "ok", "message": f"同步完成: 新增{result['added']}，更新{result['updated']}，共{result['total']}", **result}
+
+
+@router.post("/stocks/fetch")
+def admin_fetch_stock(
+    symbol: str = Query(..., description="股票代码"),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """添加单只股票并获取全部数据"""
+    from app.api.stocks import add_stock_and_fetch
+    return add_stock_and_fetch(symbol=symbol, db=db, user=admin)
+
+
+# ==================== 评分管理 ====================
+
+class ScoreUpdateRequest(BaseModel):
+    quality_score: Optional[float] = None
+    valuation_score: Optional[float] = None
+    growth_score: Optional[float] = None
+    trend_score: Optional[float] = None
+    risk_score: Optional[float] = None
+    rating: Optional[str] = None
+    reason_summary: Optional[str] = None
+
+
+@router.get("/scores")
+def admin_list_scores(
+    keyword: str = Query("", description="搜索代码/名称"),
+    rating: str = Query(None, description="评级筛选"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """管理员评分列表"""
+    from app.models.stock_score import StockScore
+    from app.models.stock import Stock
+    query = db.query(StockScore, Stock).join(Stock, StockScore.stock_id == Stock.id)
+    if keyword:
+        query = query.filter((Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%")))
+    if rating:
+        query = query.filter(StockScore.rating == rating)
+    total = query.count()
+    results = query.order_by(StockScore.score_date.desc(), StockScore.total_score.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": score.id, "stock_id": stock.id, "symbol": stock.symbol, "name": stock.name,
+                "total_score": score.total_score, "quality_score": score.quality_score,
+                "valuation_score": score.valuation_score, "growth_score": score.growth_score,
+                "trend_score": score.trend_score, "risk_score": score.risk_score,
+                "rating": score.rating, "reason_summary": score.reason_summary,
+                "score_date": str(score.score_date),
+            }
+            for score, stock in results
+        ],
+    }
+
+
+@router.put("/scores/{score_id}")
+def admin_update_score(score_id: int, req: ScoreUpdateRequest, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """手动调整评分"""
+    from app.models.stock_score import StockScore
+    score = db.query(StockScore).filter(StockScore.id == score_id).first()
+    if not score:
+        raise HTTPException(status_code=404, detail="评分记录不存在")
+    if req.quality_score is not None:
+        score.quality_score = req.quality_score
+    if req.valuation_score is not None:
+        score.valuation_score = req.valuation_score
+    if req.growth_score is not None:
+        score.growth_score = req.growth_score
+    if req.trend_score is not None:
+        score.trend_score = req.trend_score
+    if req.risk_score is not None:
+        score.risk_score = req.risk_score
+    if req.rating is not None:
+        score.rating = req.rating
+    if req.reason_summary is not None:
+        score.reason_summary = req.reason_summary
+    score.total_score = round((score.quality_score or 0) + (score.valuation_score or 0) + (score.growth_score or 0) + (score.trend_score or 0) + (score.risk_score or 0), 1)
+    db.commit()
+    return {"status": "ok", "message": "评分已更新", "total_score": score.total_score}
+
+
+# ==================== 信号管理 ====================
+
+class SignalUpdateRequest(BaseModel):
+    signal_type: Optional[str] = None
+    signal_strength: Optional[int] = None
+    suggested_position: Optional[float] = None
+    entry_price: Optional[float] = None
+    target_price: Optional[float] = None
+    stop_loss_price: Optional[float] = None
+    holding_period: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.get("/signals")
+def admin_list_signals(
+    keyword: str = Query("", description="搜索代码/名称"),
+    signal_type: str = Query(None, description="信号类型"),
+    status: str = Query(None, description="状态"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """管理员信号列表"""
+    from app.models.trade_signal import TradeSignal
+    from app.models.stock import Stock
+    query = db.query(TradeSignal, Stock).join(Stock, TradeSignal.stock_id == Stock.id)
+    if keyword:
+        query = query.filter((Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%")))
+    if signal_type:
+        query = query.filter(TradeSignal.signal_type == signal_type)
+    if status:
+        query = query.filter(TradeSignal.status == status)
+    total = query.count()
+    results = query.order_by(TradeSignal.signal_date.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": sig.id, "stock_id": stock.id, "symbol": stock.symbol, "name": stock.name,
+                "signal_type": sig.signal_type, "signal_strength": sig.signal_strength,
+                "suggested_position": sig.suggested_position,
+                "entry_price": sig.entry_price, "target_price": sig.target_price,
+                "stop_loss_price": sig.stop_loss_price, "holding_period": sig.holding_period,
+                "status": sig.status, "signal_date": str(sig.signal_date),
+            }
+            for sig, stock in results
+        ],
+    }
+
+
+@router.put("/signals/{signal_id}")
+def admin_update_signal(signal_id: int, req: SignalUpdateRequest, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """编辑信号"""
+    from app.models.trade_signal import TradeSignal
+    sig = db.query(TradeSignal).filter(TradeSignal.id == signal_id).first()
+    if not sig:
+        raise HTTPException(status_code=404, detail="信号不存在")
+    if req.signal_type is not None:
+        sig.signal_type = req.signal_type
+    if req.signal_strength is not None:
+        sig.signal_strength = req.signal_strength
+    if req.suggested_position is not None:
+        sig.suggested_position = req.suggested_position
+    if req.entry_price is not None:
+        sig.entry_price = req.entry_price
+    if req.target_price is not None:
+        sig.target_price = req.target_price
+    if req.stop_loss_price is not None:
+        sig.stop_loss_price = req.stop_loss_price
+    if req.holding_period is not None:
+        sig.holding_period = req.holding_period
+    if req.status is not None:
+        if req.status not in ("ACTIVE", "EXPIRED", "EXECUTED"):
+            raise HTTPException(status_code=400, detail="状态必须是 ACTIVE、EXPIRED 或 EXECUTED")
+        sig.status = req.status
+    db.commit()
+    return {"status": "ok", "message": "信号已更新"}
+
+
+@router.delete("/signals/{signal_id}")
+def admin_delete_signal(signal_id: int, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """删除信号"""
+    from app.models.trade_signal import TradeSignal
+    sig = db.query(TradeSignal).filter(TradeSignal.id == signal_id).first()
+    if not sig:
+        raise HTTPException(status_code=404, detail="信号不存在")
+    db.delete(sig)
+    db.commit()
+    return {"status": "ok", "message": "信号已删除"}

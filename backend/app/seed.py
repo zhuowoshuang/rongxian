@@ -25,8 +25,38 @@ from app.models.user import User
 from app.models.setting import Setting
 import bcrypt
 import numpy as np
+import statistics
 
 provider = get_provider()
+
+
+def _ema(data: list, period: int) -> list:
+    """计算指数移动平均线（真实 EMA）"""
+    if not data:
+        return []
+    multiplier = 2 / (period + 1)
+    ema = [float(data[0])]
+    for i in range(1, len(data)):
+        ema.append(float(data[i]) * multiplier + ema[-1] * (1 - multiplier))
+    return ema
+
+
+def _rsi(closes: list, period: int = 14) -> float:
+    """计算 RSI 相对强弱指数（真实算法）"""
+    if len(closes) < period + 1:
+        return 50.0
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    gains = [d if d > 0 else 0 for d in deltas]
+    losses = [-d if d < 0 else 0 for d in deltas]
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
 _use_mock = type(provider).__name__ == "MockProvider"
 
 # 核心股票池 - 涵盖 A 股和港股优质标的（共40只）
@@ -311,28 +341,42 @@ def _clear_data(db):
 
 
 def _compute_technicals(db, stock_map):
-    """计算技术指标"""
+    """计算技术指标（真实算法）"""
     count = 0
     for symbol, stock_id in stock_map.items():
         prices = db.query(DailyPrice).filter(DailyPrice.stock_id == stock_id).order_by(DailyPrice.trade_date).all()
-        if len(prices) < 20:
+        if len(prices) < 26:
             continue
         closes = [p.close for p in prices]
         volumes = [p.volume for p in prices]
 
+        # 预计算全量 EMA 序列
+        ema12_series = _ema(closes, 12)
+        ema26_series = _ema(closes, 26)
+        macd_series = [ema12_series[i] - ema26_series[i] for i in range(len(closes))]
+        macd_signal_series = _ema(macd_series, 9)
+
         for i, p in enumerate(prices):
             if i < 19:
                 continue
-            ma20 = np.mean(closes[max(0, i-19):i+1])
-            ma60 = np.mean(closes[max(0, i-59):i+1]) if i >= 59 else None
-            ma120 = np.mean(closes[max(0, i-119):i+1]) if i >= 119 else None
-            vol_ma5 = np.mean(volumes[max(0, i-4):i+1])
-            vol_ma20 = np.mean(volumes[max(0, i-19):i+1])
+            ma20 = float(np.mean(closes[max(0, i-19):i+1]))
+            ma60 = float(np.mean(closes[max(0, i-59):i+1])) if i >= 59 else None
+            ma120 = float(np.mean(closes[max(0, i-119):i+1])) if i >= 119 else None
+            vol_ma5 = float(np.mean(volumes[max(0, i-4):i+1]))
+            vol_ma20 = float(np.mean(volumes[max(0, i-19):i+1]))
 
-            ema12 = np.mean(closes[max(0, i-11):i+1])
-            ema26 = np.mean(closes[max(0, i-25):i+1]) if i >= 25 else ema12
-            macd = ema12 - ema26
-            macd_signal = macd * 0.8
+            # 真实 MACD（EMA12 - EMA26，信号线为 MACD 的 9 周期 EMA）
+            macd = macd_series[i]
+            macd_sig = macd_signal_series[i]
+
+            # 真实 RSI（14 周期 Wilder 平滑）
+            rsi = _rsi(closes[:i+1], 14)
+
+            # 真实布林带（MA20 ± 2 倍标准差）
+            window = closes[max(0, i-19):i+1]
+            boll_std = statistics.stdev(window) if len(window) >= 2 else 0
+            boll_upper = ma20 + 2 * boll_std
+            boll_lower = ma20 - 2 * boll_std
 
             ti = TechnicalIndicator(
                 stock_id=stock_id,
@@ -341,12 +385,12 @@ def _compute_technicals(db, stock_map):
                 ma60=round(ma60, 2) if ma60 else None,
                 ma120=round(ma120, 2) if ma120 else None,
                 macd=round(macd, 4),
-                macd_signal=round(macd_signal, 4),
-                macd_hist=round(macd - macd_signal, 4),
-                rsi14=round(50 + np.random.uniform(-15, 15), 2),
-                boll_upper=round(ma20 * 1.02, 2),
+                macd_signal=round(macd_sig, 4),
+                macd_hist=round(macd - macd_sig, 4),
+                rsi14=round(rsi, 2),
+                boll_upper=round(boll_upper, 2),
                 boll_middle=round(ma20, 2),
-                boll_lower=round(ma20 * 0.98, 2),
+                boll_lower=round(boll_lower, 2),
                 volume_ma5=round(vol_ma5, 0),
                 volume_ma20=round(vol_ma20, 0),
             )
@@ -357,40 +401,7 @@ def _compute_technicals(db, stock_map):
 
 
 def _score_stocks(db, stock_map, score_date):
-    """对所有股票评分，确保信号类型多样化"""
-    # 强制注入高评分的股票（模拟不同市场状态下的优质标的）
-    forced_scores = {
-        # BUY 信号 (total >= 85) - A股
-        "600519": {"total": 92, "q": 28, "v": 18, "g": 17, "t": 17, "r": 12, "reason": "白酒龙头，业绩稳健增长，估值合理，趋势确认"},
-        "600036": {"total": 88, "q": 26, "v": 17, "g": 16, "t": 17, "r": 12, "reason": "零售银行标杆，资产质量优异，估值低位"},
-        "000333": {"total": 86, "q": 25, "v": 17, "g": 16, "t": 16, "r": 12, "reason": "家电龙头，全球化布局完善，业绩确定性强"},
-        "300760": {"total": 85, "q": 26, "v": 15, "g": 17, "t": 15, "r": 12, "reason": "医疗器械龙头，国产替代加速，海外拓展顺利"},
-        # BUY 信号 - 港股
-        "00700": {"total": 89, "q": 27, "v": 17, "g": 16, "t": 17, "r": 12, "reason": "互联网巨头，游戏和广告业务复苏，AI布局领先"},
-        "03690": {"total": 87, "q": 25, "v": 16, "g": 18, "t": 16, "r": 12, "reason": "本地生活龙头，外卖和到店业务稳健增长"},
-        # ADD 信号 (total >= 75)
-        "600276": {"total": 82, "q": 24, "v": 16, "g": 16, "t": 14, "r": 12, "reason": "创新药龙头，研发管线丰富，趋势向好"},
-        "000858": {"total": 80, "q": 25, "v": 15, "g": 15, "t": 15, "r": 10, "reason": "高端白酒品牌力强，业绩增长确定性高"},
-        "000568": {"total": 79, "q": 25, "v": 14, "g": 15, "t": 15, "r": 10, "reason": "浓香白酒龙头，国窖系列持续放量"},
-        "601166": {"total": 78, "q": 24, "v": 16, "g": 13, "t": 14, "r": 11, "reason": "股份行龙头，财富管理转型成效显著"},
-        "09988": {"total": 77, "q": 23, "v": 15, "g": 14, "t": 14, "r": 11, "reason": "电商巨头，云业务增长强劲，估值修复中"},
-        "01810": {"total": 76, "q": 22, "v": 14, "g": 16, "t": 14, "r": 10, "reason": "消费电子龙头，SU7汽车业务打开增长空间"},
-        "09633": {"total": 75, "q": 24, "v": 14, "g": 14, "t": 13, "r": 10, "reason": "饮用水龙头，品牌护城河深厚，现金流优秀"},
-        # WATCH 信号 (total >= 65)
-        "300750": {"total": 73, "q": 22, "v": 13, "g": 15, "t": 13, "r": 10, "reason": "新能源电池龙头，成长性好但估值偏高"},
-        "601318": {"total": 71, "q": 22, "v": 14, "g": 12, "t": 13, "r": 10, "reason": "综合金融集团，估值合理但成长放缓"},
-        "000001": {"total": 68, "q": 20, "v": 14, "g": 12, "t": 13, "r": 9, "reason": "零售银行转型中，估值低位但趋势未确认"},
-        "601012": {"total": 67, "q": 20, "v": 12, "g": 14, "t": 12, "r": 9, "reason": "光伏龙头，行业产能过剩压力待消化"},
-        "02020": {"total": 72, "q": 23, "v": 13, "g": 14, "t": 12, "r": 10, "reason": "运动服饰龙头，多品牌战略推进中"},
-        "01299": {"total": 70, "q": 23, "v": 13, "g": 12, "t": 12, "r": 10, "reason": "亚太保险龙头，新业务价值增长稳健"},
-        "09999": {"total": 69, "q": 22, "v": 13, "g": 13, "t": 12, "r": 9, "reason": "游戏龙头，海外业务拓展顺利"},
-        "600030": {"total": 66, "q": 21, "v": 13, "g": 11, "t": 12, "r": 9, "reason": "券商龙头，受益资本市场改革"},
-        # REDUCE 信号 (total < 65)
-        "002304": {"total": 58, "q": 18, "v": 12, "g": 10, "t": 10, "r": 8, "reason": "白酒行业竞争加剧，省外扩张承压"},
-        "600585": {"total": 55, "q": 17, "v": 13, "g": 8, "t": 10, "r": 7, "reason": "水泥需求疲软，行业景气度下行"},
-        "00027": {"total": 52, "q": 16, "v": 11, "g": 9, "t": 9, "r": 7, "reason": "博彩业复苏不及预期，贵宾业务持续萎缩"},
-    }
-
+    """对所有股票使用真实算法评分"""
     count = 0
     for symbol, stock_id in stock_map.items():
         price = db.query(DailyPrice).filter(DailyPrice.stock_id == stock_id).order_by(DailyPrice.trade_date.desc()).first()
@@ -400,19 +411,18 @@ def _score_stocks(db, stock_map, score_date):
         if not price:
             continue
 
-        # 使用强制评分或计算评分
-        if symbol in forced_scores:
-            fs = forced_scores[symbol]
-            q_score, v_score, g_score, t_score, r_score = fs["q"], fs["v"], fs["g"], fs["t"], fs["r"]
-            total = fs["total"]
-            reason = fs["reason"]
+        q_score, q_detail = calculate_quality_score(financial) if financial else (0, ["无财务数据"])
+        v_score, v_detail = calculate_valuation_score(price, financial) if financial else (0, ["无财务数据"])
+        g_score, g_detail = calculate_growth_score(financial) if financial else (0, ["无财务数据"])
+        t_score, t_detail = calculate_trend_score(price, tech) if tech else (0, ["无技术数据"])
+        r_score, r_detail = calculate_risk_score(financial, price) if financial else (0, ["无财务数据"])
+
+        total = q_score + v_score + g_score + t_score + r_score
+        all_details = q_detail + v_detail + g_detail + t_detail + r_detail
+        # detail 列表元素为 dict: {"item": ..., "value": ..., "score": ..., "status": ...}
+        if all_details:
+            reason = "; ".join(f"{d['item']}{d['value']}" if isinstance(d, dict) else str(d) for d in all_details[:5])
         else:
-            q_score, _ = calculate_quality_score(financial) if financial else (15, "无财务数据")
-            v_score, _ = calculate_valuation_score(price, financial) if financial else (10, "无财务数据")
-            g_score, _ = calculate_growth_score(financial) if financial else (10, "无财务数据")
-            t_score, _ = calculate_trend_score(price, tech) if tech else (10, "无技术数据")
-            r_score, _ = calculate_risk_score(financial, price) if financial else (5, "无财务数据")
-            total = q_score + v_score + g_score + t_score + r_score
             reason = f"质量{q_score:.0f} 估值{v_score:.0f} 成长{g_score:.0f} 趋势{t_score:.0f} 风险{r_score:.0f}"
 
         rating = get_rating(total)
@@ -603,7 +613,6 @@ def refresh_daily():
     generate_daily_report(db, today)
 
     db.close()
-    print(f"[{today}] Daily refresh completed.")
     print(f"[{today}] Daily refresh completed.")
 
 

@@ -1,41 +1,29 @@
 """
 混合数据源 - 东方财富 + 腾讯 API
-所有外部请求通过 curl 子进程发送，绕过系统代理和 TLS 指纹检测
 东方财富: 股票列表、财务数据
 腾讯: 日线行情、实时行情、市场指数
 """
 import re
 import json
-import subprocess
+import logging
 import pandas as pd
 from datetime import date, datetime, timedelta
 from typing import Optional
 from urllib.parse import urlencode
 from app.data_providers.base import DataProviderBase
+from app.data_providers.http_client import get_json, get_text
+
+logger = logging.getLogger(__name__)
 
 
 def _curl_get(url: str, timeout: int = 15) -> dict:
-    """使用 curl 子进程发送请求（绕过系统代理和 TLS 指纹检测）"""
-    result = subprocess.run(
-        ["curl", "-s", "--noproxy", "*", "--max-time", str(timeout), url],
-        capture_output=True, text=True, timeout=timeout + 5,
-        encoding="utf-8", errors="replace",
-    )
-    if result.returncode != 0:
-        raise ConnectionError(f"curl failed: {result.stderr[:200]}")
-    return json.loads(result.stdout)
+    """GET 请求并返回 JSON（统一 HTTP 客户端）"""
+    return get_json(url, timeout=timeout)
 
 
 def _curl_get_text(url: str, timeout: int = 15) -> str:
-    """使用 curl 子进程获取文本"""
-    result = subprocess.run(
-        ["curl", "-s", "--noproxy", "*", "--max-time", str(timeout), url],
-        capture_output=True, text=True, timeout=timeout + 5,
-        encoding="utf-8", errors="replace",
-    )
-    if result.returncode != 0:
-        raise ConnectionError(f"curl failed: {result.stderr[:200]}")
-    return result.stdout
+    """GET 请求并返回文本（统一 HTTP 客户端）"""
+    return get_text(url, timeout=timeout)
 
 
 class EastMoneyProvider(DataProviderBase):

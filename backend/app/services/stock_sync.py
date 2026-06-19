@@ -1,80 +1,77 @@
 """
-股票列表同步服务 - 从新浪/腾讯拉取全部A股+港股代码入库
+股票列表同步服务 - 从东方财富拉取全部A股+港股代码入库
 研报同步服务 - 从东方财富拉取研报入库
 """
 import json
-import re
 import time
-import urllib.request
+import os
+import requests
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models.stock import Stock
 from app.models.research_report import ResearchReport
 from app.data_providers import get_provider
 
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-def _fetch_sina_stock_list(node: str, max_count: int = 6000) -> list:
-    """从新浪财经获取A股列表
-    node: sh_a (沪A) / sz_a (深A)
+def _fetch_eastmoney_stock_list(market: str) -> list:
+    """从东方财富批量获取股票列表
+    market: A_SHARE 或 HK
+    返回: [{"symbol": "600519", "name": "贵州茅台", "exchange": "SH"}, ...]
     """
-    url = (
-        f"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
-        f"Market_Center.getHQNodeDataSimple?page=1&num={max_count}&sort=symbol&asc=1&node={node}"
-    )
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    resp = urllib.request.urlopen(req, timeout=30)
-    raw = resp.read()
-    text = raw.decode("gbk", errors="replace")
-    data = json.loads(text)
+    if market == "A_SHARE":
+        fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
+    else:
+        fs = "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2"
 
-    stocks = []
-    for item in data:
-        symbol_full = item.get("symbol", "")  # e.g. "sh600000" or "sz000001"
-        code = item.get("code", "")  # e.g. "600000"
-        name = item.get("name", "")
-        if not code or not name:
-            continue
-        exchange = "SH" if symbol_full.startswith("sh") else "SZ"
-        stocks.append({
-            "symbol": code,
-            "name": name,
-            "exchange": exchange,
-        })
-    return stocks
+    session = requests.Session()
+    session.trust_env = True  # 自动使用系统代理
+    all_stocks = []
+    page = 1
+    while True:
+        url = (
+            f"https://82.push2.eastmoney.com/api/qt/clist/get"
+            f"?pn={page}&pz=5000&po=1&np=1"
+            f"&ut=bd1d9ddb04089700cf9c27f6f7426281"
+            f"&fltt=2&invt=2&fid=f12"
+            f"&fs={fs}"
+            f"&fields=f12,f14"
+        )
+        for retry in range(3):
+            try:
+                resp = session.get(url, headers=_HEADERS, timeout=30)
+                data = resp.json()
+                break
+            except Exception as e:
+                if retry == 2:
+                    raise
+                time.sleep(1)
 
+        items = data.get("data", {}).get("diff", [])
+        if not items:
+            break
 
-def _fetch_hk_stock_list() -> list:
-    """从腾讯行情接口获取港股列表（通过批量查询代码范围）"""
-    stocks = []
-    # 港股代码范围: 00001-09999 (主板), 01000-01999 (创业板部分)
-    # 分批查询，每批100个
-    for start in range(1, 10000, 100):
-        end = min(start + 100, 10000)
-        codes = [f"hk{str(i).zfill(5)}" for i in range(start, end)]
-        url = f"https://qt.gtimg.cn/q={','.join(codes)}"
+        for item in items:
+            code = str(item.get("f12", ""))
+            name = item.get("f14", "")
+            if not code or not name:
+                continue
+            if market == "A_SHARE":
+                exchange = "SH" if code.startswith(("6", "5")) else "SZ"
+            else:
+                exchange = "HK"
+            all_stocks.append({
+                "symbol": code,
+                "name": name,
+                "exchange": exchange,
+            })
 
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            resp = urllib.request.urlopen(req, timeout=15)
-            text = resp.read().decode("gbk", errors="replace")
+        if len(items) < 5000:
+            break
+        page += 1
+        time.sleep(0.2)
 
-            pattern = r'v_hk(\d+)="([^"]*)"'
-            matches = re.findall(pattern, text)
-            for code, data_str in matches:
-                fields = data_str.split("~")
-                if len(fields) > 3 and fields[1] and fields[1].strip():
-                    stocks.append({
-                        "symbol": code,
-                        "name": fields[1].strip(),
-                        "exchange": "HK",
-                    })
-        except Exception:
-            continue
-
-        # 每批间隔一下，避免请求过快
-        time.sleep(0.3)
-
-    return stocks
+    return all_stocks
 
 
 def sync_stock_list(db: Session, market: str = "ALL") -> dict:
@@ -86,57 +83,40 @@ def sync_stock_list(db: Session, market: str = "ALL") -> dict:
     updated = 0
     total = 0
 
+    markets = []
     if market in ("A_SHARE", "ALL"):
-        # 同步A股
-        for node, mkt in [("sh_a", "A_SHARE"), ("sz_a", "A_SHARE")]:
-            try:
-                stocks = _fetch_sina_stock_list(node)
-                for s in stocks:
-                    existing = db.query(Stock).filter(Stock.symbol == s["symbol"]).first()
-                    if existing:
-                        if existing.name != s["name"]:
-                            existing.name = s["name"]
-                        updated += 1
-                    else:
-                        db.add(Stock(
-                            symbol=s["symbol"],
-                            name=s["name"],
-                            market=mkt,
-                            exchange=s["exchange"],
-                            currency="CNY",
-                            status="ACTIVE",
-                        ))
-                        added += 1
-                    total += 1
-                db.commit()
-            except Exception as e:
-                print(f"Failed to sync {node}: {e}")
-                db.rollback()
-
+        markets.append(("A_SHARE", "CNY"))
     if market in ("HK", "ALL"):
-        # 同步港股
+        markets.append(("HK", "HKD"))
+
+    for mkt, currency in markets:
         try:
-            stocks = _fetch_hk_stock_list()
+            stocks = _fetch_eastmoney_stock_list(mkt)
+            print(f"[stock_sync] {mkt}: 获取到 {len(stocks)} 只股票")
+
             for s in stocks:
                 existing = db.query(Stock).filter(Stock.symbol == s["symbol"]).first()
                 if existing:
                     if existing.name != s["name"]:
                         existing.name = s["name"]
+                    if not existing.industry and s.get("industry"):
+                        existing.industry = s["industry"]
                     updated += 1
                 else:
                     db.add(Stock(
                         symbol=s["symbol"],
                         name=s["name"],
-                        market="HK",
-                        exchange="HK",
-                        currency="HKD",
+                        market=mkt,
+                        exchange=s["exchange"],
+                        currency=currency,
                         status="ACTIVE",
                     ))
                     added += 1
                 total += 1
+
             db.commit()
         except Exception as e:
-            print(f"Failed to sync HK stocks: {e}")
+            print(f"[stock_sync] {mkt} 同步失败: {e}")
             db.rollback()
 
     return {"added": added, "updated": updated, "total": total}

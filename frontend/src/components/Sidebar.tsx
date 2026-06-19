@@ -21,6 +21,8 @@ import {
   Languages,
   Sun,
   Moon,
+  Menu,
+  X,
 } from "lucide-react";
 
 export function useSidebarCollapsed() {
@@ -28,11 +30,17 @@ export function useSidebarCollapsed() {
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved) setCollapsed(saved === "true");
+    // H-04: 监听自定义事件同步折叠状态
+    const handler = (e: Event) => setCollapsed((e as CustomEvent).detail);
+    window.addEventListener("sidebar-toggle", handler);
+    return () => window.removeEventListener("sidebar-toggle", handler);
   }, []);
   const toggle = () => {
     setCollapsed((prev) => {
-      localStorage.setItem("sidebar-collapsed", String(!prev));
-      return !prev;
+      const next = !prev;
+      localStorage.setItem("sidebar-collapsed", String(next));
+      window.dispatchEvent(new CustomEvent("sidebar-toggle", { detail: next }));
+      return next;
     });
   };
   return { collapsed, toggle };
@@ -44,7 +52,11 @@ export default function Sidebar() {
   const { t, language, setLanguage } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const { collapsed, toggle } = useSidebarCollapsed();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isDark = theme === "dark";
+
+  // 移动端路由切换时自动关闭侧边栏
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const role = user?.role || "guest";
   const navItems = [
@@ -59,10 +71,23 @@ export default function Sidebar() {
   ];
 
   return (
+    <>
+      {/* H-12: 移动端汉堡菜单按钮 */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className="fixed top-4 left-4 z-[60] p-2 rounded-lg bg-dark-card/90 border border-white/[0.08] text-dark-text lg:hidden backdrop-blur"
+        aria-label="Toggle menu"
+      >
+        {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+
+      {/* 移动端遮罩 */}
+      {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />}
+
     <aside
       className={`fixed left-0 top-0 h-screen gradient-bg flex flex-col z-50 transition-all duration-300 ${
         collapsed ? "w-16" : "w-60"
-      } ${isDark ? "text-white" : "text-slate-800"}`}
+      } ${isDark ? "text-white" : "text-slate-800"} max-lg:-translate-x-full ${mobileOpen ? "max-lg:translate-x-0" : ""}`}
     >
       {/* Logo */}
       <div className={`px-4 py-4 border-b flex items-center justify-between ${isDark ? "border-white/[0.06]" : "border-slate-200"}`}>
@@ -131,7 +156,7 @@ export default function Sidebar() {
         )}
         <button
           onClick={toggleTheme}
-          title={isDark ? "切换到亮色模式" : "切换到暗色模式"}
+          title={isDark ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
           className={`p-2 rounded-lg transition-colors ${isDark ? "hover:bg-white/10 text-white/40 hover:text-white" : "hover:bg-slate-100 text-slate-400 hover:text-slate-700"}`}
         >
           {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -179,5 +204,6 @@ export default function Sidebar() {
         </div>
       )}
     </aside>
+    </>
   );
 }

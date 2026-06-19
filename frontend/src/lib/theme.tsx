@@ -14,7 +14,10 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "dark";
   const saved = localStorage.getItem("theme");
-  return saved === "light" ? "light" : "dark";
+  if (saved === "light" || saved === "dark") return saved;
+  // L-05: 检测系统主题偏好
+  if (window.matchMedia?.("(prefers-color-scheme: light)").matches) return "light";
+  return "dark";
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

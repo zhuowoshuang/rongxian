@@ -213,6 +213,8 @@ def _market_index_summary(db: Session, report_date: date) -> str:
 
 def generate_daily_report(db: Session, report_date: date, market_filter: list[str] = None, style: str = None) -> Report:
     """生成详细的每日策略报告 — 从20年华尔街投资专家视角"""
+    from sqlalchemy import func as sqlfunc
+
     signals = db.query(TradeSignal).filter(TradeSignal.signal_date == report_date).all()
 
     # 获取所有有评分的股票（确保覆盖全部标的）
@@ -220,37 +222,59 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
     if not all_scores:
         all_scores = db.query(StockScore).order_by(StockScore.score_date.desc()).limit(500).all()
 
-    # 按类型分类信号
-    dist = {"BUY": [], "ADD": [], "WATCH": [], "REDUCE": [], "SELL": []}
-    signal_stock_ids = set()
-    for s in signals:
-        stock = db.query(Stock).filter(Stock.id == s.stock_id).first()
-        if not stock:
-            continue
-        signal_stock_ids.add(s.stock_id)
-        score = db.query(StockScore).filter(
-            StockScore.stock_id == s.stock_id, StockScore.score_date == report_date
-        ).first()
-        if not score:
-            score = db.query(StockScore).filter(StockScore.stock_id == s.stock_id).order_by(StockScore.score_date.desc()).first()
-        price = db.query(DailyPrice).filter(
-            DailyPrice.stock_id == s.stock_id
-        ).order_by(DailyPrice.trade_date.desc()).first()
+    # 收集所有需要查询的 stock_id
+    signal_stock_ids = set(s.stock_id for s in signals)
+    score_stock_ids = set(sc.stock_id for sc in all_scores)
+    all_stock_ids = signal_stock_ids | score_stock_ids
 
-        item = {
+    # 批量查询 Stock（消除 N+1）
+    stocks = db.query(Stock).filter(Stock.id.in_(all_stock_ids)).all() if all_stock_ids else []
+    stock_map = {s.id: s for s in stocks}
+
+    # 批量查询最新评分（消除 N+1）
+    score_today = {sc.stock_id: sc for sc in all_scores}
+    # 对于没有当天评分的，查最新评分
+    missing_score_ids = signal_stock_ids - set(score_today.keys())
+    if missing_score_ids:
+        latest_score_sq = db.query(
+            StockScore.stock_id,
+            sqlfunc.max(StockScore.score_date).label("max_date")
+        ).filter(StockScore.stock_id.in_(missing_score_ids)).group_by(StockScore.stock_id).subquery()
+        extra_scores = db.query(StockScore).join(
+            latest_score_sq,
+            (StockScore.stock_id == latest_score_sq.c.stock_id) &
+            (StockScore.score_date == latest_score_sq.c.max_date)
+        ).all()
+        for sc in extra_scores:
+            score_today[sc.stock_id] = sc
+
+    # 批量查询最新价格（消除 N+1）
+    latest_price_sq = db.query(
+        DailyPrice.stock_id,
+        sqlfunc.max(DailyPrice.trade_date).label("max_date")
+    ).filter(DailyPrice.stock_id.in_(all_stock_ids)).group_by(DailyPrice.stock_id).subquery()
+    prices = db.query(DailyPrice).join(
+        latest_price_sq,
+        (DailyPrice.stock_id == latest_price_sq.c.stock_id) &
+        (DailyPrice.trade_date == latest_price_sq.c.max_date)
+    ).all() if all_stock_ids else []
+    price_map = {p.stock_id: p for p in prices}
+
+    def _build_item(stock, score, price, signal=None):
+        return {
             "symbol": stock.symbol,
             "name": stock.name,
             "market": stock.market,
             "exchange": stock.exchange,
             "industry": stock.industry,
             "sector": stock.sector,
-            "strength": s.signal_strength,
-            "position": s.suggested_position,
-            "entry_price": s.entry_price,
-            "target_price": s.target_price,
-            "stop_loss": s.stop_loss_price,
-            "holding_period": s.holding_period,
-            "logic": s.logic_json,
+            "strength": signal.signal_strength if signal else 0,
+            "position": signal.suggested_position if signal else 0,
+            "entry_price": signal.entry_price if signal else None,
+            "target_price": signal.target_price if signal else None,
+            "stop_loss": signal.stop_loss_price if signal else None,
+            "holding_period": signal.holding_period if signal else "-",
+            "logic": signal.logic_json if signal else None,
             "total_score": score.total_score if score else 0,
             "quality_score": score.quality_score if score else 0,
             "valuation_score": score.valuation_score if score else 0,
@@ -265,44 +289,27 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
             "market_cap": price.market_cap if price else None,
             "volume": price.volume if price else None,
         }
+
+    # 按类型分类信号
+    dist = {"BUY": [], "ADD": [], "WATCH": [], "REDUCE": [], "SELL": []}
+    for s in signals:
+        stock = stock_map.get(s.stock_id)
+        if not stock:
+            continue
+        score = score_today.get(s.stock_id)
+        price = price_map.get(s.stock_id)
+        item = _build_item(stock, score, price, s)
         dist.get(s.signal_type, []).append(item)
 
     # 补充没有信号但有评分的标的到观望列表
     for sc in all_scores:
         if sc.stock_id in signal_stock_ids:
             continue
-        stock = db.query(Stock).filter(Stock.id == sc.stock_id).first()
+        stock = stock_map.get(sc.stock_id)
         if not stock:
             continue
-        price = db.query(DailyPrice).filter(DailyPrice.stock_id == sc.stock_id).order_by(DailyPrice.trade_date.desc()).first()
-        item = {
-            "symbol": stock.symbol,
-            "name": stock.name,
-            "market": stock.market,
-            "exchange": stock.exchange,
-            "industry": stock.industry,
-            "sector": stock.sector,
-            "strength": 0,
-            "position": 0,
-            "entry_price": None,
-            "target_price": None,
-            "stop_loss": None,
-            "holding_period": "-",
-            "logic": None,
-            "total_score": sc.total_score,
-            "quality_score": sc.quality_score,
-            "valuation_score": sc.valuation_score,
-            "growth_score": sc.growth_score,
-            "trend_score": sc.trend_score,
-            "risk_score": sc.risk_score,
-            "rating": sc.rating,
-            "close": price.close if price else None,
-            "pe": price.pe if price else None,
-            "pb": price.pb if price else None,
-            "dividend_yield": price.dividend_yield if price else None,
-            "market_cap": price.market_cap if price else None,
-            "volume": price.volume if price else None,
-        }
+        price = price_map.get(sc.stock_id)
+        item = _build_item(stock, sc, price)
         dist["WATCH"].append(item)
 
     # 统计
@@ -508,15 +515,19 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
             reason = item["logic"].get("reason", "") if item.get("logic") else ""
             market_label = "A股" if item["market"] == "A_SHARE" else "港股"
 
+            close_val = item.get('close')
+            close_str = f"{close_val:.2f}" if close_val else "N/A"
+            close_stop = f"{close_val * 0.95:.2f}" if close_val else "N/A"
+
             if sig_type == "SELL":
                 risk_advice = f"""**⚠️ 卖出策略:**
-- 立即启动止损程序，在{item['close']:.2f}元附近分批离场
+- 立即启动止损程序，在{close_str}元附近分批离场
 - 若出现放量下跌，加速清仓，不要犹豫
 - 卖出后至少观望2-3周，等待情绪修复后再考虑重新介入"""
             else:
                 risk_advice = f"""**⚠️ 减仓策略:**
 - 建议在反弹时逐步减仓，每次减仓不超过持仓的30%
-- 设定{item['close'] * 0.95:.2f}元为最终止损线
+- 设定{close_stop}元为最终止损线
 - 关注成交量变化，缩量反弹是最佳减仓时机"""
 
             md += f"""### {icon} {item['symbol']} {item['name']}（{market_label}）— {_rating_text(item['rating'])}
@@ -524,7 +535,7 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
 | 指标 | 数值 |
 |------|------|
 | 综合评分 | {item['total_score']:.0f}/100 |
-| 最新收盘 | {item['close']:.2f} 元 |
+| 最新收盘 | {close_str} 元 |
 | PE / PB | {item['pe'] or 'N/A'} / {item['pb'] or 'N/A'} |
 | 信号理由 | {reason} |
 
@@ -561,7 +572,8 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
             signal_mark = " 🟡"
         elif item in dist["SELL"]:
             signal_mark = " 🔴"
-        md += f"| {rank} | {item['symbol']} | {item['name']}{signal_mark} | {item['industry']} | {item['total_score']:.0f} | {item['quality_score']:.0f} | {item['valuation_score']:.0f} | {item['growth_score']:.0f} | {item['trend_score']:.0f} | {item['risk_score']:.0f} | {item['rating']} | {item['close']:.2f} | {item['pe'] or 'N/A'} |\n"
+        _c = f"{item['close']:.2f}" if item.get('close') is not None else "N/A"
+        md += f"| {rank} | {item['symbol']} | {item['name']}{signal_mark} | {item['industry']} | {item['total_score']:.0f} | {item['quality_score']:.0f} | {item['valuation_score']:.0f} | {item['growth_score']:.0f} | {item['trend_score']:.0f} | {item['risk_score']:.0f} | {item['rating']} | {_c} | {item['pe'] or 'N/A'} |\n"
 
     # 港股标的
     md += "\n### 4.2 港股标的评分排名\n\n"
@@ -578,7 +590,8 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
             signal_mark = " 🟡"
         elif item in dist["SELL"]:
             signal_mark = " 🔴"
-        md += f"| {rank} | {item['symbol']} | {item['name']}{signal_mark} | {item['industry']} | {item['total_score']:.0f} | {item['quality_score']:.0f} | {item['valuation_score']:.0f} | {item['growth_score']:.0f} | {item['trend_score']:.0f} | {item['risk_score']:.0f} | {item['rating']} | {item['close']:.2f} | {item['pe'] or 'N/A'} |\n"
+        _c = f"{item['close']:.2f}" if item.get('close') is not None else "N/A"
+        md += f"| {rank} | {item['symbol']} | {item['name']}{signal_mark} | {item['industry']} | {item['total_score']:.0f} | {item['quality_score']:.0f} | {item['valuation_score']:.0f} | {item['growth_score']:.0f} | {item['trend_score']:.0f} | {item['risk_score']:.0f} | {item['rating']} | {_c} | {item['pe'] or 'N/A'} |\n"
 
     # 操作建议
     md += f"""
@@ -771,6 +784,34 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
 *本报告共覆盖 {total} 只标的（A股 {len(a_share_items)} 只 + 港股 {len(hk_items)} 只），包含 {len(dist['BUY'])} 个买入信号、{len(dist['ADD'])} 个加仓信号、{len(dist['WATCH'])} 个观望信号、{len(dist['REDUCE'])} 个减仓信号、{len(dist['SELL'])} 个卖出信号*
 """
 
+    # AI 深度洞察（DeepSeek）
+    ai_analysis = ""
+    try:
+        from app.services.ai_service import generate_ai_market_insight
+        ai_market_data = {
+            "market_status": market_status,
+            "buy_add": buy_add,
+            "reduce_sell": reduce_sell,
+            "top_buys": [{"symbol": s["symbol"], "name": s["name"], "score": s.get("total_score", 0), "type": s.get("signal_type", "")} for s in (dist["BUY"] + dist["ADD"])[:5]],
+            "risk_items": [{"symbol": s["symbol"], "name": s["name"], "type": s.get("signal_type", "")} for s in (dist["REDUCE"] + dist["SELL"])[:5]],
+        }
+        ai_analysis = generate_ai_market_insight(db, ai_market_data)
+        if ai_analysis:
+            md += f"""
+
+---
+
+## AI 深度洞察
+
+> 以下分析由 DeepSeek 大模型生成，基于当日量化数据，仅供参考。
+
+{ai_analysis}
+
+"""
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"AI 市场分析生成失败: {e}")
+
     content_json = {
         "market_status": market_status,
         "mood_desc": mood_desc,
@@ -926,7 +967,7 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
 | 最高价 | {latest_price.high:.2f} 元 | 最低价 | {latest_price.low:.2f} 元 |
 | 成交量 | {latest_price.volume/10000:.0f} 万手 | 市盈率 (PE) | {latest_price.pe if latest_price.pe else 'N/A'} |
 | 市净率 (PB) | {latest_price.pb if latest_price.pb else 'N/A'} | 总市值 | {cap_str} |
-| 股息率 | {dy_str} | 换手率 | {latest_price.turnover_rate:.2f}% |
+| 股息率 | {dy_str} | 换手率 | {(f"{latest_price.turnover_rate:.2f}" if latest_price.turnover_rate is not None else "N/A")}% |
 
 ### 2.2 近20日价格走势
 
@@ -1416,6 +1457,58 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
 *报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 融衔量化分析系统 v2.0*
 """
 
+    # AI 个股深度分析（DeepSeek）
+    try:
+        import logging
+        logging.getLogger(__name__).info("开始生成 AI 个股分析...")
+        from app.services.ai_service import generate_ai_stock_analysis
+        ai_stock_data = {
+            "name": stock.name,
+            "symbol": stock.symbol,
+            "market": stock.market,
+            "industry": stock.industry,
+            "total_score": score.total_score if score else 0,
+            "rating": score.rating if score else "N/A",
+            "quality_score": score.quality_score if score else 0,
+            "valuation_score": score.valuation_score if score else 0,
+            "growth_score": score.growth_score if score else 0,
+            "trend_score": score.trend_score if score else 0,
+            "risk_score": score.risk_score if score else 0,
+            "close": latest_price.close if latest_price else None,
+            "pe": latest_price.pe if latest_price else None,
+            "pb": latest_price.pb if latest_price else None,
+            "market_cap": latest_price.market_cap if latest_price else None,
+            "dividend_yield": latest_price.dividend_yield if latest_price else None,
+            "rsi14": tech.rsi14 if tech else None,
+            "macd": tech.macd if tech else None,
+            "ma20": tech.ma20 if tech else None,
+            "ma60": tech.ma60 if tech else None,
+            "signal_type": signal.signal_type if signal else None,
+            "signal_strength": signal.signal_strength if signal else None,
+            "entry_price": signal.entry_price if signal else None,
+            "stop_loss": signal.stop_loss_price if signal else None,
+            "financials": [{"period": f.report_period, "revenue_yoy": f.revenue_yoy, "net_profit_yoy": f.net_profit_yoy, "roe": f.roe} for f in financials[:4]],
+        }
+        ai_analysis = generate_ai_stock_analysis(db, ai_stock_data)
+        logging.getLogger(__name__).info(f"AI 分析结果长度: {len(ai_analysis) if ai_analysis else 0}")
+        if ai_analysis:
+            md += f"""
+
+---
+
+## AI 深度洞察
+
+> 以下分析由 DeepSeek 大模型生成，基于量化模型数据，仅供参考。
+
+{ai_analysis}
+
+"""
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger(__name__).warning(f"AI 个股分析生成失败: {e}")
+        logging.getLogger(__name__).warning(traceback.format_exc())
+
     report = Report(
         report_date=report_date,
         report_type=ReportType.STOCK,
@@ -1460,6 +1553,24 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
     if not all_scores:
         all_scores = db.query(StockScore).order_by(StockScore.score_date.desc()).limit(200).all()
 
+    # 批量查询 Stock 和最新 DailyPrice（消除 N+1）
+    score_stock_ids = [sc.stock_id for sc in all_scores]
+    stocks_list = db.query(Stock).filter(Stock.id.in_(score_stock_ids)).all()
+    stock_map = {s.id: s for s in stocks_list}
+
+    # 批量查询每个 stock 的最新价格
+    latest_price_subq = db.query(
+        DailyPrice.stock_id,
+        func.max(DailyPrice.trade_date).label("max_date")
+    ).filter(DailyPrice.stock_id.in_(score_stock_ids)).group_by(DailyPrice.stock_id).subquery()
+
+    latest_prices = db.query(DailyPrice).join(
+        latest_price_subq,
+        (DailyPrice.stock_id == latest_price_subq.c.stock_id) &
+        (DailyPrice.trade_date == latest_price_subq.c.max_date)
+    ).all()
+    price_map = {p.stock_id: p for p in latest_prices}
+
     # 计算风格加权分并筛选推荐标的
     style_ranked = []
     for sc in all_scores:
@@ -1470,9 +1581,9 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
             + sc.trend_score * weights["trend"]
             + sc.risk_score * weights["risk"]
         )
-        stock = db.query(Stock).filter(Stock.id == sc.stock_id).first()
+        stock = stock_map.get(sc.stock_id)
         if stock:
-            price = db.query(DailyPrice).filter(DailyPrice.stock_id == sc.stock_id).order_by(DailyPrice.trade_date.desc()).first()
+            price = price_map.get(sc.stock_id)
             style_ranked.append({
                 "symbol": stock.symbol,
                 "name": stock.name,
@@ -1497,10 +1608,13 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
     style_ranked.sort(key=lambda x: x["style_score"], reverse=True)
     top_picks = [s for s in style_ranked if s["total_score"] >= cfg["min_score"]][:15]
 
-    # 获取信号中的风格匹配标的
+    # 获取信号中的风格匹配标的（批量查询消除 N+1）
+    signal_stock_ids = [s.stock_id for s in signals]
+    signal_stocks = db.query(Stock).filter(Stock.id.in_(signal_stock_ids)).all() if signal_stock_ids else []
+    signal_stock_map = {s.id: s for s in signal_stocks}
     signal_map = {}
     for s in signals:
-        stock = db.query(Stock).filter(Stock.id == s.stock_id).first()
+        stock = signal_stock_map.get(s.stock_id)
         if stock:
             signal_map[stock.symbol] = s
 
@@ -1607,7 +1721,8 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
         md += "|------|------|------|------|------|--------|--------|------|------|------|------|------|------|--------|------|\n"
         for i, item in enumerate(top_picks[:15], 1):
             market_label = "A股" if item["market"] == "A_SHARE" else "港股"
-            md += f"| {i} | {item['symbol']} | {item['name']} | {market_label} | {item['industry']} | {item['style_score']:.0f} | {item['total_score']:.0f} | {item['quality_score']:.0f} | {item['valuation_score']:.0f} | {item['growth_score']:.0f} | {item['trend_score']:.0f} | {item['risk_score']:.0f} | {item['rating']} | {item['close']:.2f} | {item['pe'] or 'N/A'} |\n"
+            _c = f"{item['close']:.2f}" if item.get('close') is not None else "N/A"
+            md += f"| {i} | {item['symbol']} | {item['name']} | {market_label} | {item['industry']} | {item['style_score']:.0f} | {item['total_score']:.0f} | {item['quality_score']:.0f} | {item['valuation_score']:.0f} | {item['growth_score']:.0f} | {item['trend_score']:.0f} | {item['risk_score']:.0f} | {item['rating']} | {_c} | {item['pe'] or 'N/A'} |\n"
 
         md += f"\n### 3.2 风格适配说明\n\n"
         md += f"以上标的按照{cfg['name']}加权评分排序，综合考虑了{cfg['name']}投资者的核心关注点。排名靠前的标的在{cfg['name']}视角下具备更高的投资价值。\n"
@@ -1631,7 +1746,7 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
 | 指标 | 数值 | 指标 | 数值 |
 |------|------|------|------|
 | 风格加权分 | **{item['style_score']:.0f}** | 综合评分 | {item['total_score']:.0f} |
-| 收盘价 | {item['close']:.2f}元 | PE/PB | {item['pe'] or 'N/A'}/{item['pb'] or 'N/A'} |
+| 收盘价 | {(f"{item['close']:.2f}" if item.get('close') is not None else "N/A")}元 | PE/PB | {item['pe'] or 'N/A'}/{item['pb'] or 'N/A'} |
 | 市值 | {cap_str} | 股息率 | {dy_str} |
 
 **入选理由:** {pick_reason}。
@@ -1933,6 +2048,37 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
 
 *报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 融衔量化分析系统 v2.0*
 """
+
+    # AI 风格策略洞察（DeepSeek）
+    try:
+        from app.services.ai_service import generate_ai_style_insight
+        ai_style_data = {
+            "style_name": cfg["name"],
+            "style_desc": cfg.get("desc", ""),
+            "pick_count": len(top_picks),
+            "industry_dist": industry_dist,
+            "top_picks": [{"symbol": p["symbol"], "name": p["name"], "style_score": p.get("style_score", 0), "total_score": p.get("total_score", 0), "rating": p.get("rating", "")} for p in top_picks[:10]],
+            "max_position": cfg["max_position"],
+            "total_position": cfg.get("total_position", "N/A"),
+        }
+        ai_analysis = generate_ai_style_insight(db, ai_style_data)
+        if ai_analysis:
+            md += f"""
+
+---
+
+## AI 深度洞察
+
+> 以下分析由 DeepSeek 大模型生成，基于{cfg['name']}策略量化数据，仅供参考。
+
+{ai_analysis}
+
+"""
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger(__name__).warning(f"AI 风格分析生成失败: {e}")
+        logging.getLogger(__name__).warning(traceback.format_exc())
 
     report = Report(
         report_date=report_date,

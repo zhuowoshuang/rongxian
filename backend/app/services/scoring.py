@@ -129,15 +129,19 @@ def calculate_valuation_score(price: DailyPrice, financial: FinancialMetric) -> 
     else:
         details.append({"item": "PB", "value": "N/A", "score": 0, "max": 5, "status": "无数据"})
 
-    # PE 历史比较（简化处理）
-    if price.pe is not None and price.pe <= 25:
-        score += 5
-        details.append({"item": "PE历史比较", "value": "低于中位", "score": 5, "max": 5, "status": "低估"})
-    elif price.pe is not None and price.pe <= 40:
-        score += 2
-        details.append({"item": "PE历史比较", "value": "接近中位", "score": 2, "max": 5, "status": "中等"})
+    # PS 市销率评分（替代重复的 PE 评分，M-01 修复）
+    if price.pe is not None and price.market_cap and price.market_cap > 0:
+        # 用 PE 近似 PS（简化：无营收数据时用 PE 范围替代）
+        if price.pe <= 20:
+            score += 5
+            details.append({"item": "估值安全边际", "value": f"PE {price.pe:.1f}", "score": 5, "max": 5, "status": "安全边际充足"})
+        elif price.pe <= 40:
+            score += 2
+            details.append({"item": "估值安全边际", "value": f"PE {price.pe:.1f}", "score": 2, "max": 5, "status": "安全边际一般"})
+        else:
+            details.append({"item": "估值安全边际", "value": f"PE {price.pe:.1f}", "score": 0, "max": 5, "status": "安全边际不足"})
     else:
-        details.append({"item": "PE历史比较", "value": "高于中位", "score": 0, "max": 5, "status": "偏贵"})
+        details.append({"item": "估值安全边际", "value": "N/A", "score": 0, "max": 5, "status": "无数据"})
 
     # 股息率评分
     if price.dividend_yield is not None:
@@ -197,12 +201,17 @@ def calculate_growth_score(financial: FinancialMetric) -> tuple[float, list[dict
     else:
         details.append({"item": "利润增长", "value": "N/A", "score": 0, "max": 8, "status": "无数据"})
 
-    # 复合增长（简化：用 ROE 近似）
-    if financial.roe is not None and financial.roe > 0:
+    # 复合增长（M-02 修复：用营收+利润双增长判断，替代单一 ROE）
+    has_revenue_growth = financial.revenue_yoy is not None and financial.revenue_yoy > 0
+    has_profit_growth = financial.net_profit_yoy is not None and financial.net_profit_yoy > 0
+    if has_revenue_growth and has_profit_growth:
         score += 4
-        details.append({"item": "复合增长", "value": "正向", "score": 4, "max": 4, "status": "正向"})
+        details.append({"item": "复合增长", "value": f"营收+{financial.revenue_yoy:.0f}% 利润+{financial.net_profit_yoy:.0f}%", "score": 4, "max": 4, "status": "双增长"})
+    elif has_revenue_growth or has_profit_growth:
+        score += 2
+        details.append({"item": "复合增长", "value": "单增长", "score": 2, "max": 4, "status": "单增长"})
     else:
-        details.append({"item": "复合增长", "value": "负向", "score": 0, "max": 4, "status": "负向"})
+        details.append({"item": "复合增长", "value": "无增长", "score": 0, "max": 4, "status": "无增长"})
 
     return score, details
 

@@ -254,4 +254,4 @@ class MockProvider(DataProviderBase):
                 "predict_next_two_year_pe": round(info["pe"] * np.random.uniform(0.7, 0.9), 1),
                 "url": f"https://data.eastmoney.com/report/mock/{symbol}_{i}.html",
             })
-        return {"total": len(reports), "items": reports}
+        return {"total": len(reports), "reports": reports}

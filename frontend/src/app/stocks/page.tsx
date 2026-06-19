@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSignals, searchStocks } from "@/lib/api";
+import { getSignals } from "@/lib/api";
 import TopSearch from "@/components/TopSearch";
 import GlassCard from "@/components/ui/GlassCard";
 import TabSwitch from "@/components/ui/TabSwitch";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { showToast } from "@/components/ui/Toast";
 import { useTranslation } from "@/lib/i18n";
 import { signalTypeLabel, signalTypeClass, renderStars, marketLabel, getChangeColor, formatPercent } from "@/lib/utils";
 
@@ -15,13 +16,16 @@ export default function StocksPage() {
   const { t } = useTranslation();
   const [stocks, setStocks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [market, setMarket] = useState<string>("");
   const router = useRouter();
 
   useEffect(() => {
     setLoading(true);
+    setError(false);
     getSignals({ market: market || undefined, page_size: 50 })
       .then((data) => setStocks(data.items || []))
+      .catch(() => { setError(true); showToast("error", t("common.loadFailed")); })
       .finally(() => setLoading(false));
   }, [market]);
 
@@ -53,6 +57,13 @@ export default function StocksPage() {
 
       {loading ? (
         <SkeletonTable />
+      ) : error ? (
+        <GlassCard>
+          <div className="text-center py-8 text-dark-muted">
+            <p className="mb-3">{t("common.loadingError")}</p>
+            <button onClick={() => { setLoading(true); setError(false); getSignals({ market: market || undefined, page_size: 50 }).then((data) => setStocks(data.items || [])).catch(() => setError(true)).finally(() => setLoading(false)); }} className="btn-primary px-4 py-2 text-sm">{t("common.retry")}</button>
+          </div>
+        </GlassCard>
       ) : stocks.length === 0 ? (
         <GlassCard>
           <EmptyState message={t("common.noSignal.sync")} />
