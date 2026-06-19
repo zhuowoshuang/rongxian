@@ -1,75 +1,60 @@
 """
-股票列表同步服务 - 从东方财富拉取全部A股+港股代码入库
+股票列表同步服务 - 从 akshare 拉取全部A股+港股代码入库
 研报同步服务 - 从东方财富拉取研报入库
 """
 import json
 import time
 import os
-import requests
+import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models.stock import Stock
 from app.models.research_report import ResearchReport
 from app.data_providers import get_provider
 
-_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+logger = logging.getLogger(__name__)
 
-def _fetch_eastmoney_stock_list(market: str) -> list:
-    """从东方财富批量获取股票列表
+
+def _fetch_akshare_stock_list(market: str) -> list:
+    """从 akshare 获取全量股票列表
     market: A_SHARE 或 HK
     返回: [{"symbol": "600519", "name": "贵州茅台", "exchange": "SH"}, ...]
     """
-    if market == "A_SHARE":
-        fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
-    else:
-        fs = "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2"
+    import akshare as ak
 
-    session = requests.Session()
-    session.trust_env = True  # 自动使用系统代理
     all_stocks = []
-    page = 1
-    while True:
-        url = (
-            f"https://82.push2.eastmoney.com/api/qt/clist/get"
-            f"?pn={page}&pz=5000&po=1&np=1"
-            f"&ut=bd1d9ddb04089700cf9c27f6f7426281"
-            f"&fltt=2&invt=2&fid=f12"
-            f"&fs={fs}"
-            f"&fields=f12,f14"
-        )
-        for retry in range(3):
-            try:
-                resp = session.get(url, headers=_HEADERS, timeout=30)
-                data = resp.json()
-                break
-            except Exception as e:
-                if retry == 2:
-                    raise
-                time.sleep(1)
 
-        items = data.get("data", {}).get("diff", [])
-        if not items:
-            break
-
-        for item in items:
-            code = str(item.get("f12", ""))
-            name = item.get("f14", "")
+    if market == "A_SHARE":
+        # A 股：使用 stock_info_a_code_name 获取全量代码
+        df = ak.stock_info_a_code_name()
+        for _, row in df.iterrows():
+            code = str(row["code"]).zfill(6)
+            name = str(row["name"]).strip()
             if not code or not name:
                 continue
-            if market == "A_SHARE":
-                exchange = "SH" if code.startswith(("6", "5")) else "SZ"
-            else:
-                exchange = "HK"
+            exchange = "SH" if code.startswith(("6", "5", "9")) else "SZ"
             all_stocks.append({
                 "symbol": code,
                 "name": name,
                 "exchange": exchange,
             })
-
-        if len(items) < 5000:
-            break
-        page += 1
-        time.sleep(0.2)
+    else:
+        # 港股：使用 stock_hk_spot 获取全量代码
+        df = ak.stock_hk_spot()
+        # 列名可能是中文或英文，按位置取
+        cols = list(df.columns)
+        code_col = cols[1] if len(cols) > 1 else "代码"  # 第二列是代码
+        name_col = cols[2] if len(cols) > 2 else "名称"  # 第三列是中文名称
+        for _, row in df.iterrows():
+            code = str(row[code_col]).zfill(5)
+            name = str(row[name_col]).strip()
+            if not code or not name or code == "nan":
+                continue
+            all_stocks.append({
+                "symbol": code,
+                "name": name,
+                "exchange": "HK",
+            })
 
     return all_stocks
 
@@ -91,7 +76,7 @@ def sync_stock_list(db: Session, market: str = "ALL") -> dict:
 
     for mkt, currency in markets:
         try:
-            stocks = _fetch_eastmoney_stock_list(mkt)
+            stocks = _fetch_akshare_stock_list(mkt)
             print(f"[stock_sync] {mkt}: 获取到 {len(stocks)} 只股票")
 
             for s in stocks:
