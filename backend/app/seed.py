@@ -1,13 +1,16 @@
 """
-真实数据种子脚本 - 使用东方财富 API
+真实数据种子脚本 - 使用 akshare + 腾讯 API
 运行方式: python -m app.seed
 """
 import sys
 import os
+import logging
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import date, timedelta
 from app.db.session import SessionLocal, engine
+
+logger = logging.getLogger(__name__)
 from app.db.base import Base
 from app.models.stock import Stock
 from app.models.daily_price import DailyPrice
@@ -203,9 +206,11 @@ def seed(force: bool = False):
         except Exception as e:
             return symbol, stock_id, None
 
-    # 并发抓取，最多 10 个线程
+    # 并发抓取，最多 3 个线程（避免 API 限流）
+    # 注意：数据库操作在主线程执行，避免 Session 线程安全问题
     items = list(stock_map.items())
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    all_price_rows = []
+    with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(_fetch_one_price, sym, sid): sym for sym, sid in items}
         done = 0
         for future in as_completed(futures):
@@ -214,13 +219,18 @@ def seed(force: bool = False):
             if rows is None:
                 failed_count += 1
             elif rows:
-                db.add_all(rows)
+                all_price_rows.extend(rows)
                 price_count += len(rows)
-            # 每 100 只股票提交一次
-            if done % 100 == 0:
+            # 每 500 只股票批量写入一次
+            if done % 500 == 0:
+                db.add_all(all_price_rows)
                 db.commit()
+                all_price_rows = []
                 print(f"  Progress: {done}/{len(items)} stocks, {price_count} prices")
-    db.commit()
+    # 写入剩余数据
+    if all_price_rows:
+        db.add_all(all_price_rows)
+        db.commit()
     print(f"  Total: {price_count} daily prices ({failed_count} failed)")
 
     # 3. 获取真实财务数据 (并发抓取)
@@ -259,6 +269,7 @@ def seed(force: bool = False):
 
     # Yahoo Finance 限流较严，用 3 个线程
     items = list(stock_map.items())
+    all_fin_rows = []
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(_fetch_one_financial, sym, sid): sym for sym, sid in items}
         done = 0
@@ -268,12 +279,16 @@ def seed(force: bool = False):
             if rows is None:
                 fin_failed += 1
             elif rows:
-                db.add_all(rows)
+                all_fin_rows.extend(rows)
                 fin_count += len(rows)
-            if done % 50 == 0:
+            if done % 200 == 0:
+                db.add_all(all_fin_rows)
                 db.commit()
+                all_fin_rows = []
                 print(f"  Progress: {done}/{len(items)} stocks, {fin_count} reports")
-    db.commit()
+    if all_fin_rows:
+        db.add_all(all_fin_rows)
+        db.commit()
     print(f"  Total: {fin_count} financial reports ({fin_failed} failed)")
 
     # 3.5 从已有数据计算估值 (PE/PB)
