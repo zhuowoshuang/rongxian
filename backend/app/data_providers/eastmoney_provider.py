@@ -38,51 +38,73 @@ class EastMoneyProvider(DataProviderBase):
             return self._fetch_hk_list()
 
     def _fetch_a_share_list(self) -> pd.DataFrame:
+        """获取全部 A 股列表（分页）"""
         url = "https://82.push2.eastmoney.com/api/qt/clist/get"
-        params = urlencode({
-            "pn": 1, "pz": 5000, "po": 1, "np": 1,
-            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-            "fltt": 2, "invt": 2, "fid": "f12",
-            "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
-            "fields": "f12,f14,f2,f3,f9,f23,f115,f116,f117",
-        })
-        data = _curl_get(f"{url}?{params}")
-        items = data.get("data", {}).get("diff", [])
-        rows = []
-        for item in items:
-            code = item.get("f12", "")
-            name = item.get("f14", "")
-            if not code or not name:
-                continue
-            exchange = "SH" if code.startswith(("6", "5")) else "SZ"
-            rows.append({
-                "symbol": code, "name": name, "market": "A_SHARE",
-                "exchange": exchange, "industry": "", "sector": "",
+        all_rows = []
+        page = 1
+        while True:
+            params = urlencode({
+                "pn": page, "pz": 5000, "po": 1, "np": 1,
+                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                "fltt": 2, "invt": 2, "fid": "f12",
+                "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
+                "fields": "f12,f14,f2,f3,f9,f23,f115,f116,f117",
             })
-        return pd.DataFrame(rows)
+            data = _curl_get(f"{url}?{params}")
+            items = data.get("data", {}).get("diff", [])
+            if not items:
+                break
+            for item in items:
+                code = item.get("f12", "")
+                name = item.get("f14", "")
+                if not code or not name:
+                    continue
+                exchange = "SH" if code.startswith(("6", "5")) else "SZ"
+                all_rows.append({
+                    "symbol": code, "name": name, "market": "A_SHARE",
+                    "exchange": exchange, "industry": "", "sector": "",
+                })
+            if len(items) < 5000:
+                break
+            page += 1
+            import time
+            time.sleep(0.2)
+        logger.info(f"A 股列表获取完成: {len(all_rows)} 只")
+        return pd.DataFrame(all_rows)
 
     def _fetch_hk_list(self) -> pd.DataFrame:
+        """获取全部港股列表（分页）"""
         url = "https://82.push2.eastmoney.com/api/qt/clist/get"
-        params = urlencode({
-            "pn": 1, "pz": 3000, "po": 1, "np": 1,
-            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-            "fltt": 2, "invt": 2, "fid": "f12",
-            "fs": "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2",
-            "fields": "f12,f14,f2,f3",
-        })
-        data = _curl_get(f"{url}?{params}")
-        items = data.get("data", {}).get("diff", [])
-        rows = []
-        for item in items:
-            code = item.get("f12", "")
-            name = item.get("f14", "")
-            if not code or not name:
-                continue
-            rows.append({
-                "symbol": code, "name": name, "market": "HK",
-                "exchange": "HK", "industry": "", "sector": "",
+        all_rows = []
+        page = 1
+        while True:
+            params = urlencode({
+                "pn": page, "pz": 5000, "po": 1, "np": 1,
+                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                "fltt": 2, "invt": 2, "fid": "f12",
+                "fs": "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2",
+                "fields": "f12,f14,f2,f3",
             })
-        return pd.DataFrame(rows)
+            data = _curl_get(f"{url}?{params}")
+            items = data.get("data", {}).get("diff", [])
+            if not items:
+                break
+            for item in items:
+                code = item.get("f12", "")
+                name = item.get("f14", "")
+                if not code or not name:
+                    continue
+                all_rows.append({
+                    "symbol": code, "name": name, "market": "HK",
+                    "exchange": "HK", "industry": "", "sector": "",
+                })
+            if len(items) < 5000:
+                break
+            page += 1
+            import time
+            time.sleep(0.2)
+        logger.info(f"港股列表获取完成: {len(all_rows)} 只")
+        return pd.DataFrame(all_rows)
 
     # ==================== 日线行情 (腾讯) ====================
 

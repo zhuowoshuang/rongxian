@@ -142,43 +142,48 @@ def seed(force: bool = False):
     sync_result = sync_stock_list(db, market="ALL")
     print(f"  Synced: {sync_result['total']} stocks (A-share + HK)")
 
-    # 1. 插入核心股票（带行业/板块信息）
+    # 1. 插入核心股票（带行业/板块信息），并构建全量 stock_map
     print("\n[1/8] Seeding core stocks with industry info...")
-    stock_map = {}
+    # 先用 CORE_STOCKS 更新行业信息
     for s in CORE_STOCKS:
         existing_stock = db.query(Stock).filter(Stock.symbol == s["symbol"]).first()
         if existing_stock:
-            # 更新行业信息
             existing_stock.industry = s.get("industry", "")
             existing_stock.sector = s.get("sector", "")
             existing_stock.market = s.get("market", existing_stock.market)
             existing_stock.exchange = s.get("exchange", existing_stock.exchange)
-            stock_map[s["symbol"]] = existing_stock.id
         else:
             stock = Stock(**s)
             db.add(stock)
-            db.flush()
-            stock_map[s["symbol"]] = stock.id
     db.commit()
-    print(f"  Core stocks: {len(CORE_STOCKS)} with industry data")
 
-    # 2. 获取真实行情数据 (腾讯 API)
-    print("\n[2/8] Fetching real daily prices...")
+    # 构建全量 stock_map（所有 ACTIVE 股票）
+    all_stocks = db.query(Stock).filter(Stock.status == "ACTIVE").all()
+    stock_map = {s.symbol: s.id for s in all_stocks}
+    print(f"  Core stocks: {len(CORE_STOCKS)} with industry data")
+    print(f"  Total active stocks: {len(stock_map)}")
+
+    # 2. 获取真实行情数据 (并发抓取)
+    print(f"\n[2/8] Fetching daily prices for {len(stock_map)} stocks...")
     import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     today = date.today()
     start = today - timedelta(days=180)
     price_count = 0
-    for symbol, stock_id in stock_map.items():
+    failed_count = 0
+
+    def _fetch_one_price(symbol, stock_id):
+        """抓取单只股票的价格数据"""
         try:
             df = provider.fetch_daily_prices(symbol, start, today)
             if df.empty:
-                print(f"  WARNING: No price data for {symbol}")
-                continue
+                return symbol, stock_id, []
+            rows = []
             for _, row in df.iterrows():
                 trade_date = row["trade_date"]
                 if hasattr(trade_date, "date"):
                     trade_date = trade_date.date()
-                dp = DailyPrice(
+                rows.append(DailyPrice(
                     stock_id=stock_id,
                     trade_date=trade_date,
                     open=round(row["open"], 2),
@@ -193,29 +198,45 @@ def seed(force: bool = False):
                     pe=round(row["pe"], 2) if row.get("pe") and not _is_nan(row["pe"]) else None,
                     pb=round(row["pb"], 2) if row.get("pb") and not _is_nan(row["pb"]) else None,
                     dividend_yield=round(row["dividend_yield"], 2) if row.get("dividend_yield") and not _is_nan(row["dividend_yield"]) else None,
-                )
-                db.add(dp)
-                price_count += 1
-            db.commit()
-            print(f"  {symbol}: {len(df)} days")
+                ))
+            return symbol, stock_id, rows
         except Exception as e:
-            db.rollback()
-            print(f"  ERROR fetching {symbol}: {e}")
-    print(f"  Total: {price_count} daily prices")
+            return symbol, stock_id, None
 
-    # 3. 获取真实财务数据 (Yahoo Finance)
-    print("\n[3/8] Fetching real financial metrics from Yahoo Finance...")
+    # 并发抓取，最多 10 个线程
+    items = list(stock_map.items())
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_fetch_one_price, sym, sid): sym for sym, sid in items}
+        done = 0
+        for future in as_completed(futures):
+            done += 1
+            sym, sid, rows = future.result()
+            if rows is None:
+                failed_count += 1
+            elif rows:
+                db.add_all(rows)
+                price_count += len(rows)
+            # 每 100 只股票提交一次
+            if done % 100 == 0:
+                db.commit()
+                print(f"  Progress: {done}/{len(items)} stocks, {price_count} prices")
+    db.commit()
+    print(f"  Total: {price_count} daily prices ({failed_count} failed)")
+
+    # 3. 获取真实财务数据 (并发抓取)
+    print(f"\n[3/8] Fetching financial metrics for {len(stock_map)} stocks...")
     fin_count = 0
-    for idx, (symbol, stock_id) in enumerate(stock_map.items()):
-        if idx > 0 and not _use_mock:
-            time.sleep(3)  # 避免 Yahoo Finance 限流
+    fin_failed = 0
+
+    def _fetch_one_financial(symbol, stock_id):
+        """抓取单只股票的财务数据"""
         try:
             df = provider.fetch_financial_metrics(symbol)
             if df.empty:
-                print(f"  WARNING: No financial data for {symbol}")
-                continue
+                return symbol, stock_id, []
+            rows = []
             for _, row in df.iterrows():
-                fm = FinancialMetric(
+                rows.append(FinancialMetric(
                     stock_id=stock_id,
                     report_period=row.get("report_period", ""),
                     revenue=_safe_round(row.get("revenue"), 2),
@@ -231,15 +252,29 @@ def seed(force: bool = False):
                     free_cashflow=_safe_round(row.get("free_cashflow"), 2),
                     eps=_safe_round(row.get("eps"), 2),
                     book_value_per_share=_safe_round(row.get("book_value_per_share"), 2),
-                )
-                db.add(fm)
-                fin_count += 1
-            db.commit()
-            print(f"  {symbol}: {len(df)} reports")
+                ))
+            return symbol, stock_id, rows
         except Exception as e:
-            db.rollback()
-            print(f"  ERROR fetching financials for {symbol}: {e}")
-    print(f"  Total: {fin_count} financial reports")
+            return symbol, stock_id, None
+
+    # Yahoo Finance 限流较严，用 3 个线程
+    items = list(stock_map.items())
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(_fetch_one_financial, sym, sid): sym for sym, sid in items}
+        done = 0
+        for future in as_completed(futures):
+            done += 1
+            sym, sid, rows = future.result()
+            if rows is None:
+                fin_failed += 1
+            elif rows:
+                db.add_all(rows)
+                fin_count += len(rows)
+            if done % 50 == 0:
+                db.commit()
+                print(f"  Progress: {done}/{len(items)} stocks, {fin_count} reports")
+    db.commit()
+    print(f"  Total: {fin_count} financial reports ({fin_failed} failed)")
 
     # 3.5 从已有数据计算估值 (PE/PB)
     print("\n[3.5/8] Computing valuation from price + financial data...")
