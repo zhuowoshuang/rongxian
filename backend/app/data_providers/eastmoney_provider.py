@@ -123,12 +123,57 @@ class EastMoneyProvider(DataProviderBase):
             return f"sz{symbol}"
 
     def _fetch_a_daily(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
-        tc = self._tencent_code(symbol)
-        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tc},day,{start_date},{end_date},500,qfq"
-        data = _curl_get(url)
-        stock_data = data.get("data", {}).get(tc, {})
-        klines = stock_data.get("qfqday", stock_data.get("day", []))
-        return self._parse_klines(klines)
+        # 优先用腾讯 API，失败则用 baostock
+        try:
+            tc = self._tencent_code(symbol)
+            url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tc},day,{start_date},{end_date},500,qfq"
+            data = _curl_get(url)
+            stock_data = data.get("data", {}).get(tc, {})
+            klines = stock_data.get("qfqday", stock_data.get("day", []))
+            if klines:
+                return self._parse_klines(klines)
+        except Exception:
+            pass
+        # baostock 备选
+        return self._fetch_a_daily_baostock(symbol, start_date, end_date)
+
+    def _fetch_a_daily_baostock(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+        """使用 baostock 获取 A 股日线数据"""
+        try:
+            import baostock as bs
+            lg = bs.login()
+            if lg.error_code != '0':
+                return pd.DataFrame()
+            bs_code = f"sh.{symbol}" if symbol.startswith(("6", "5", "9")) else f"sz.{symbol}"
+            rs = bs.query_history_k_data_plus(
+                bs_code,
+                fields="date,open,high,low,close,volume,amount",
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d"),
+                frequency="d",
+                adjustflag="2",  # 前复权
+            )
+            rows = []
+            while rs.next():
+                row = rs.get_row_data()
+                if row and len(row) >= 6:
+                    try:
+                        rows.append({
+                            "trade_date": datetime.strptime(row[0], "%Y-%m-%d").date(),
+                            "open": float(row[1]),
+                            "high": float(row[2]),
+                            "low": float(row[3]),
+                            "close": float(row[4]),
+                            "volume": int(float(row[5])) if row[5] else 0,
+                            "turnover": int(float(row[6])) if len(row) > 6 and row[6] else 0,
+                        })
+                    except (ValueError, IndexError):
+                        continue
+            bs.logout()
+            return pd.DataFrame(rows) if rows else pd.DataFrame()
+        except Exception as e:
+            logger.debug(f"baostock fetch failed for {symbol}: {e}")
+            return pd.DataFrame()
 
     def _fetch_hk_daily(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
         tc = f"hk{symbol}"
