@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useTranslation } from "@/lib/i18n";
 
 interface User {
   username: string;
@@ -20,6 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,10 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ username, password }),
       });
     } catch {
-      throw new Error("无法连接服务器，请确认后端已启动");
+      throw new Error(t("auth.serverError"));
     }
     if (!res.ok) {
-      let msg = "登录失败";
+      let msg = t("auth.loginFailed");
       try {
         const err = await res.json();
         msg = err.detail || msg;
@@ -87,10 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ username, password, display_name: displayName }),
       });
     } catch {
-      throw new Error("无法连接服务器，请确认后端已启动");
+      throw new Error(t("auth.serverError"));
     }
     if (!res.ok) {
-      let msg = "注册失败";
+      let msg = t("auth.registerFailed");
       try {
         const err = await res.json();
         msg = err.detail || msg;

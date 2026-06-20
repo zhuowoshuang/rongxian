@@ -62,10 +62,30 @@ const en: Record<string, string> = {
   "common.connectionError": "Cannot connect to server. Please ensure backend is running.",
   "common.loadingError": "Data loading failed. Please check your network and retry.",
   "common.loadFailed": "Load failed",
-
-  // Market
+  // Auth errors
+  "auth.serverError": "Cannot connect to server. Please ensure backend is running.",
+  "auth.loginFailed": "Login failed",
+  "auth.registerFailed": "Registration failed",
+  // API errors
+  "api.timeout": "Request timeout. Report generation takes longer, please try again later.",
+  "api.pdfFailed": "PDF download failed",
+  "api.pdfTimeout": "PDF generation timeout, please try again later.",
+  // Settings validation
+  "settings.invalidSenderEmail": "Invalid sender email format",
+  "settings.invalidRecipientEmail": "Invalid recipient email format",
+  "settings.invalidPort": "SMTP port must be a number",
+  "settings.syncFailed": "Sync failed",
+  // Utils
+  "signal.buy": "BUY",
+  "signal.add": "ADD",
+  "signal.watch": "WATCH",
+  "signal.reduce": "REDUCE",
+  "signal.sell": "SELL",
   "market.aShare": "A-Share",
   "market.hk": "HK",
+  "unit.billion": "B",
+  "unit.million": "M",
+  "unit.trillion": "T",
 
   // Signal types
   "signal.BUY": "Buy",

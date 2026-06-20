@@ -33,19 +33,33 @@ export default function StockDetailPage() {
   const symbol = params.symbol as string;
   const [data, setData] = useState<StockDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
 
-  useEffect(() => {
+  const fetchData = () => {
+    setLoading(true);
+    setError(false);
     getStockDetail(symbol)
       .then(setData)
-      .catch(console.error)
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [symbol]);
+  };
+
+  useEffect(() => { fetchData(); }, [symbol]);
 
   if (loading) {
     return (
       <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
         <SkeletonCard /><SkeletonCard />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <p className="text-dark-muted">{t("common.loadingError")}</p>
+        <button onClick={fetchData} className="btn-primary px-4 py-2 text-sm">{t("common.retry")}</button>
       </div>
     );
   }

@@ -51,7 +51,7 @@ export default function ReportsPage() {
     setLoading(true);
     getReports({ report_type: reportType || undefined, page_size: 50 })
       .then((data) => setReports(data.items || []))
-      .catch(() => { setReports([]); })
+      .catch(() => { setReports([]); showToast("error", t("common.loadFailed")); })
       .finally(() => setLoading(false));
   };
 

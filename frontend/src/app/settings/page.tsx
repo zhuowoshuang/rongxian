@@ -26,7 +26,10 @@ export default function SettingsPage() {
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
-    getNotificationConfig().then((data) => setConfig((prev) => ({ ...prev, ...data }))).catch(() => {}).finally(() => setLoading(false));
+    getNotificationConfig()
+      .then((data) => setConfig((prev) => ({ ...prev, ...data })))
+      .catch(() => { setMsg({ type: "err", text: t("common.loadingError") }); })
+      .finally(() => setLoading(false));
     getStockCount().then(setStockCount).catch(() => {});
   }, []);
 
@@ -35,13 +38,13 @@ export default function SettingsPage() {
   const handleSave = async () => {
     // H-09: 表单校验
     if (config.email_sender && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.email_sender)) {
-      setMsg({ type: "err", text: "发件邮箱格式不正确" }); return;
+      setMsg({ type: "err", text: t("settings.invalidSenderEmail") }); return;
     }
     if (config.email_recipient && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.email_recipient)) {
-      setMsg({ type: "err", text: "收件邮箱格式不正确" }); return;
+      setMsg({ type: "err", text: t("settings.invalidRecipientEmail") }); return;
     }
     if (config.email_smtp_port && !/^\d+$/.test(config.email_smtp_port)) {
-      setMsg({ type: "err", text: "SMTP 端口必须为数字" }); return;
+      setMsg({ type: "err", text: t("settings.invalidPort") }); return;
     }
     setSaving(true); setMsg(null);
     try { const res = await updateNotificationConfig(config); setMsg({ type: "ok", text: res.message || t("settings.saveSuccess") }); }
@@ -59,7 +62,7 @@ export default function SettingsPage() {
   const handleSyncStocks = async (market: string) => {
     setSyncing(true); setMsg(null);
     try { const res = await syncStocks(market); setMsg({ type: "ok", text: res.message }); const counts = await getStockCount(); setStockCount(counts); }
-    catch (e: any) { setMsg({ type: "err", text: e.message || "同步失败" }); }
+    catch (e: any) { setMsg({ type: "err", text: e.message || t("settings.syncFailed") }); }
     finally { setSyncing(false); }
   };
 

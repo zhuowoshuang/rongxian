@@ -62,10 +62,30 @@ const zh: Record<string, string> = {
   "common.connectionError": "无法连接服务器，请确认后端已启动",
   "common.loadingError": "数据加载失败，请检查网络后重试",
   "common.loadFailed": "加载失败",
-
-  // Market
+  // Auth errors
+  "auth.serverError": "无法连接服务器，请确认后端已启动",
+  "auth.loginFailed": "登录失败",
+  "auth.registerFailed": "注册失败",
+  // API errors
+  "api.timeout": "请求超时，报告生成耗时较长，请稍后再试",
+  "api.pdfFailed": "PDF下载失败",
+  "api.pdfTimeout": "PDF生成超时，请稍后重试",
+  // Settings validation
+  "settings.invalidSenderEmail": "发件邮箱格式不正确",
+  "settings.invalidRecipientEmail": "收件邮箱格式不正确",
+  "settings.invalidPort": "SMTP 端口必须为数字",
+  "settings.syncFailed": "同步失败",
+  // Utils
+  "signal.buy": "买入",
+  "signal.add": "加仓",
+  "signal.watch": "观察",
+  "signal.reduce": "减仓",
+  "signal.sell": "卖出",
   "market.aShare": "A股",
   "market.hk": "港股",
+  "unit.billion": "亿",
+  "unit.million": "万",
+  "unit.trillion": "万亿",
 
   // Signal types
   "signal.BUY": "买入",

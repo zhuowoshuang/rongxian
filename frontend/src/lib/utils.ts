@@ -13,10 +13,12 @@ export function formatPercent(value: number | null | undefined, decimals = 2): s
 }
 
 /** 格式化金额（亿） */
-export function formatAmount(value: number | null | undefined): string {
+export function formatAmount(value: number | null | undefined, t?: (key: string) => string): string {
   if (value === null || value === undefined) return "N/A";
-  if (value >= 1e8) return `${(value / 1e8).toFixed(2)}亿`;
-  if (value >= 1e4) return `${(value / 1e4).toFixed(2)}万`;
+  const billion = t ? t("unit.billion") : "亿";
+  const million = t ? t("unit.million") : "万";
+  if (value >= 1e8) return `${(value / 1e8).toFixed(2)}${billion}`;
+  if (value >= 1e4) return `${(value / 1e4).toFixed(2)}${million}`;
   return value.toFixed(2);
 }
 
@@ -30,11 +32,14 @@ export function formatNumber(value: number | null | undefined, decimals = 2): st
 }
 
 /** 格式化市值 */
-export function formatMarketCap(value: number | null | undefined): string {
+export function formatMarketCap(value: number | null | undefined, t?: (key: string) => string): string {
   if (value === null || value === undefined) return "--";
-  if (value >= 1e12) return `${(value / 1e12).toFixed(1)}万亿`;
-  if (value >= 1e8) return `${(value / 1e8).toFixed(0)}亿`;
-  if (value >= 1e4) return `${(value / 1e4).toFixed(0)}万`;
+  const trillion = t ? t("unit.trillion") : "万亿";
+  const billion = t ? t("unit.billion") : "亿";
+  const million = t ? t("unit.million") : "万";
+  if (value >= 1e12) return `${(value / 1e12).toFixed(1)}${trillion}`;
+  if (value >= 1e8) return `${(value / 1e8).toFixed(0)}${billion}`;
+  if (value >= 1e4) return `${(value / 1e4).toFixed(0)}${million}`;
   return value.toFixed(0);
 }
 
@@ -49,8 +54,13 @@ export function getRiskColor(level: string): string {
   return map[level] || "text-dark-muted";
 }
 
-/** 信号类型中文映射 */
-export function signalTypeLabel(type: string): string {
+/** 信号类型映射 */
+export function signalTypeLabel(type: string, t?: (key: string) => string): string {
+  if (t) {
+    const key = `signal.${type.toLowerCase()}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
   const map: Record<string, string> = {
     BUY: "买入",
     ADD: "加仓",
@@ -97,6 +107,11 @@ export function getChangeColor(value: number | null | undefined): string {
 }
 
 /** 市场标签 */
-export function marketLabel(market: string): string {
+export function marketLabel(market: string, t?: (key: string) => string): string {
+  if (t) {
+    const key = market === "A_SHARE" ? "market.aShare" : "market.hk";
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
   return market === "A_SHARE" ? "A股" : "港股";
 }
