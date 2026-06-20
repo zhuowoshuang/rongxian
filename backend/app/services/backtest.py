@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
 from app.models.stock import Stock
+
+# 交易成本参数
+COMMISSION_RATE = 0.00025  # 佣金费率 0.025%
+STAMP_DUTY_RATE = 0.0005   # 印花税费率 0.05%（仅卖出）
+MIN_COMMISSION = 5.0        # 最低佣金 5 元
 from app.models.daily_price import DailyPrice
 from app.models.stock_score import StockScore
 from app.models.financial_metric import FinancialMetric
@@ -157,9 +162,14 @@ def run_backtest(
                     sell_price = day_prices[sid].close
                     shares = positions[sid]["shares"]
                     proceeds = shares * sell_price
-                    cost = shares * positions[sid]["cost_price"]
-                    pnl = proceeds - cost
-                    cash += proceeds
+                    # 计算交易成本
+                    commission = max(proceeds * COMMISSION_RATE, MIN_COMMISSION)
+                    stamp_duty = proceeds * STAMP_DUTY_RATE
+                    total_cost = commission + stamp_duty
+                    net_proceeds = proceeds - total_cost
+                    buy_cost = shares * positions[sid]["cost_price"]
+                    pnl = net_proceeds - buy_cost
+                    cash += net_proceeds
                     trade_log.append({
                         "date": td.isoformat(),
                         "symbol": stock_map[sid].symbol,
@@ -168,6 +178,8 @@ def run_backtest(
                         "price": round(sell_price, 2),
                         "shares": shares,
                         "pnl": round(pnl, 2),
+                        "commission": round(commission, 2),
+                        "stamp_duty": round(stamp_duty, 2),
                     })
                     del positions[sid]
 
@@ -188,25 +200,30 @@ def run_backtest(
 
                 if diff > price * 10:  # 需要买入
                     shares_to_buy = int(diff / price / 100) * 100  # 整手
-                    if shares_to_buy > 0 and cash >= shares_to_buy * price:
-                        cost = shares_to_buy * price
-                        cash -= cost
-                        if sid in positions:
-                            old = positions[sid]
-                            total_shares = old["shares"] + shares_to_buy
-                            avg_cost = (old["shares"] * old["cost_price"] + cost) / total_shares
-                            positions[sid] = {"shares": total_shares, "cost_price": avg_cost}
-                        else:
-                            positions[sid] = {"shares": shares_to_buy, "cost_price": price}
-                        trade_log.append({
-                            "date": td.isoformat(),
-                            "symbol": stock_map[sid].symbol,
-                            "name": stock_map[sid].name,
-                            "action": "BUY",
-                            "price": round(price, 2),
-                            "shares": shares_to_buy,
-                            "pnl": 0,
-                        })
+                    if shares_to_buy > 0:
+                        buy_amount = shares_to_buy * price
+                        # 计算交易成本
+                        commission = max(buy_amount * COMMISSION_RATE, MIN_COMMISSION)
+                        total_needed = buy_amount + commission
+                        if cash >= total_needed:
+                            cash -= total_needed
+                            if sid in positions:
+                                old = positions[sid]
+                                total_shares = old["shares"] + shares_to_buy
+                                avg_cost = (old["shares"] * old["cost_price"] + buy_amount) / total_shares
+                                positions[sid] = {"shares": total_shares, "cost_price": avg_cost}
+                            else:
+                                positions[sid] = {"shares": shares_to_buy, "cost_price": price}
+                            trade_log.append({
+                                "date": td.isoformat(),
+                                "symbol": stock_map[sid].symbol,
+                                "name": stock_map[sid].name,
+                                "action": "BUY",
+                                "price": round(price, 2),
+                                "shares": shares_to_buy,
+                                "pnl": 0,
+                                "commission": round(commission, 2),
+                            })
 
         # 记录月度收益（策略 + 基准 + 超额）
         if i > 0:

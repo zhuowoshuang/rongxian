@@ -84,27 +84,27 @@ MOCK_NEWS_TEMPLATES = [
 
 def _generate_price_series(base_price: float, days: int = 120, volatility: float = 0.02) -> pd.DataFrame:
     """生成逼真的价格时间序列 - 返回列名匹配 seed.py 期望"""
-    np.random.seed(int(base_price * 100) % 2**31)
+    rng = np.random.RandomState(int(base_price * 100) % 2**31)
     dates = pd.bdate_range(end=date.today(), periods=days)
     n = len(dates)
 
-    returns = np.random.normal(0.0003, volatility, n)
+    returns = rng.normal(0.0003, volatility, n)
     prices = base_price * np.cumprod(1 + returns)
 
     df = pd.DataFrame({
         "trade_date": dates,
-        "open": prices * (1 + np.random.uniform(-0.01, 0.01, n)),
-        "high": prices * (1 + np.random.uniform(0, 0.03, n)),
-        "low": prices * (1 - np.random.uniform(0, 0.03, n)),
+        "open": prices * (1 + rng.uniform(-0.01, 0.01, n)),
+        "high": prices * (1 + rng.uniform(0, 0.03, n)),
+        "low": prices * (1 - rng.uniform(0, 0.03, n)),
         "close": prices,
         "pre_close": np.roll(prices, 1),
-        "volume": np.random.uniform(5e6, 5e8, n),
-        "turnover": np.random.uniform(1e8, 1e10, n),
-        "turnover_rate": np.random.uniform(0.5, 5, n),
-        "market_cap": prices * np.random.uniform(1e9, 1e11, n),
-        "pe": np.random.uniform(10, 60, n),
-        "pb": np.random.uniform(1, 15, n),
-        "dividend_yield": np.random.uniform(0, 4, n),
+        "volume": rng.uniform(5e6, 5e8, n),
+        "turnover": rng.uniform(1e8, 1e10, n),
+        "turnover_rate": rng.uniform(0.5, 5, n),
+        "market_cap": prices * rng.uniform(1e9, 1e11, n),
+        "pe": rng.uniform(10, 60, n),
+        "pb": rng.uniform(1, 15, n),
+        "dividend_yield": rng.uniform(0, 4, n),
     })
     df.iloc[0, df.columns.get_loc("pre_close")] = base_price
     return df
@@ -112,19 +112,19 @@ def _generate_price_series(base_price: float, days: int = 120, volatility: float
 
 def _generate_financial_metrics(info: dict) -> pd.DataFrame:
     """生成模拟财务数据 - 列名匹配 seed.py 期望"""
-    np.random.seed(int(info["base_price"] * 7) % 2**31)
+    rng = np.random.RandomState(int(info["base_price"] * 7) % 2**31)
     rows = []
     for i in range(4):
         year = 2024 - i
         period = f"{year}-12-31"
-        noise = lambda: np.random.uniform(0.95, 1.05)
+        noise = lambda: rng.uniform(0.95, 1.05)
         rows.append({
             "report_period": period,
             "revenue": round(info["revenue"] * noise() * (1 - i * 0.02), 2),
             "revenue_yoy": round(info["revenue_yoy"] * noise(), 2),
             "net_profit": round(info["net_profit"] * noise() * (1 - i * 0.03), 2),
             "net_profit_yoy": round(info["profit_yoy"] * noise(), 2),
-            "gross_margin": round(np.random.uniform(25, 65), 2),
+            "gross_margin": round(rng.uniform(25, 65), 2),
             "net_margin": round(info["net_profit"] / max(info["revenue"], 1) * 100 * noise(), 2),
             "roe": round(info["roe"] * noise(), 2),
             "roa": round(info["roe"] * 0.6 * noise(), 2),
@@ -178,8 +178,8 @@ class MockProvider(DataProviderBase):
         for idx in MOCK_INDICES:
             if market != "ALL" and idx["market"] != market:
                 continue
-            np.random.seed(int(idx["base"]) % 2**31)
-            change_pct = round(np.random.uniform(-1.5, 1.8), 2)
+            rng = np.random.RandomState(int(idx["base"]) % 2**31)
+            change_pct = round(rng.uniform(-1.5, 1.8), 2)
             current = round(idx["base"] * (1 + change_pct / 100), 2)
             rows.append({
                 "name": idx["name"],
@@ -194,14 +194,14 @@ class MockProvider(DataProviderBase):
         info = MOCK_STOCKS.get(symbol)
         if not info:
             return []
-        np.random.seed(int(info["base_price"] * 11) % 2**31)
+        rng = np.random.RandomState(int(info["base_price"] * 11) % 2**31)
         news = []
         for i in range(min(limit, len(MOCK_NEWS_TEMPLATES))):
             template = MOCK_NEWS_TEMPLATES[i]
             title = template["title"].format(
                 name=info["name"],
-                pct=round(np.random.uniform(5, 30), 1),
-                days=np.random.randint(3, 15),
+                pct=round(rng.uniform(5, 30), 1),
+                days=rng.randint(3, 15),
                 price=round(info["base_price"] * np.random.uniform(1.1, 1.3), 0),
                 partner=np.random.choice(["华为", "腾讯", "阿里", "字节跳动", "中科院"]),
             )
@@ -217,19 +217,19 @@ class MockProvider(DataProviderBase):
         info = MOCK_STOCKS.get(symbol)
         if not info:
             return {}
-        np.random.seed(int(info["base_price"] * 3) % 2**31)
+        rng = np.random.RandomState(int(info["base_price"] * 3) % 2**31)
         return {
-            "pe": round(info["pe"] * np.random.uniform(0.95, 1.05), 2),
-            "pb": round(info["pb"] * np.random.uniform(0.95, 1.05), 2),
-            "market_cap": round(info["base_price"] * np.random.uniform(1e8, 5e10), 0),
-            "dividend_yield": round(np.random.uniform(0.5, 4.0), 2),
+            "pe": round(info["pe"] * rng.uniform(0.95, 1.05), 2),
+            "pb": round(info["pb"] * rng.uniform(0.95, 1.05), 2),
+            "market_cap": round(info["base_price"] * rng.uniform(1e8, 5e10), 0),
+            "dividend_yield": round(rng.uniform(0.5, 4.0), 2),
         }
 
     def fetch_reports(self, symbol: str = None, page: int = 1, page_size: int = 20) -> dict:
         info = MOCK_STOCKS.get(symbol) if symbol else None
         if not info:
             return {"total": 0, "items": []}
-        np.random.seed(int(info["base_price"] * 13) % 2**31)
+        rng = np.random.RandomState(int(info["base_price"] * 13) % 2**31)
         orgs = ["中信证券", "华泰证券", "国泰君安", "招商证券", "中金公司", "海通证券", "申万宏源"]
         ratings = ["买入", "增持", "买入", "增持", "强推", "买入", "增持"]
         researchers = ["张三", "李四", "王五", "赵六", "钱七", "孙八", "周九"]
@@ -238,7 +238,7 @@ class MockProvider(DataProviderBase):
             org = orgs[i % len(orgs)]
             reports.append({
                 "info_code": f"MOCK{symbol}{i:03d}",
-                "title": f"{info['name']}：{np.random.choice(['业绩稳健增长', '行业龙头地位稳固', '新业务放量可期', '估值修复空间大', '回购彰显信心'])}",
+                "title": f"{info['name']}：{rng.choice(['业绩稳健增长', '行业龙头地位稳固', '新业务放量可期', '估值修复空间大', '回购彰显信心'])}",
                 "stock_code": symbol,
                 "stock_name": info["name"],
                 "org_name": org,

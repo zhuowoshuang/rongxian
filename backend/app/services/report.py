@@ -72,10 +72,10 @@ def _signal_icon(sig_type: str) -> str:
     return {"BUY": "🟢", "ADD": "🔵", "WATCH": "⚪", "REDUCE": "🟡", "SELL": "🔴"}.get(sig_type, "⚪")
 
 
-def _score_bar(score: float, 满分: float) -> str:
-    pct = score / 满分 * 100 if 满分 > 0 else 0
+def _score_bar(score: float, max_score: float) -> str:
+    pct = score / max_score * 100 if max_score > 0 else 0
     filled = int(pct / 10)
-    return "█" * filled + "░" * (10 - filled) + f" {score:.0f}/{满分:.0f}"
+    return "█" * filled + "░" * (10 - filled) + f" {score:.0f}/{max_score:.0f}"
 
 
 def _spark_line(values: list, width: int = 20) -> str:
