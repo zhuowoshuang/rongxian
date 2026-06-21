@@ -614,6 +614,7 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
 
   const handleRoleToggle = async (user: any) => {
     const newRole = user.role === "admin" ? "user" : "admin";
+    if (!confirm(`${user.username}: ${user.role} → ${newRole}?`)) return;
     try {
       await updateAdminUser(user.id, { role: newRole });
       setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: newRole } : u));

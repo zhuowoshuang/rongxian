@@ -49,7 +49,7 @@ export default function BacktestPage() {
 
   useEffect(() => {
     if (simStockKeyword.length < 1) { setSimStockResults([]); return; }
-    const timer = setTimeout(() => { searchStocks(simStockKeyword).then((data) => setSimStockResults(data || [])).catch(() => {}); }, 300);
+    const timer = setTimeout(() => { searchStocks(simStockKeyword).then((data) => setSimStockResults(data || [])).catch(() => { setSimStockResults([]); }); }, 300);
     return () => clearTimeout(timer);
   }, [simStockKeyword]);
 
