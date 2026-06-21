@@ -45,7 +45,8 @@ async function fetchAPI<T>(path: string, options?: RequestInit & { timeoutMs?: n
       if (res.status === 401 && typeof window !== "undefined") {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
-        // 跳转到登录页而非整页刷新，保留路由状态
+        // 通知 auth context 清除状态
+        window.dispatchEvent(new Event("auth:logout"));
         window.location.href = "/";
       }
       // 尝试解析后端返回的错误详情

@@ -120,6 +120,7 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               title={collapsed ? item.label : undefined}
+              aria-label={item.label}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
                   ? isDark
