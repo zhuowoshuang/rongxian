@@ -259,3 +259,88 @@ export interface SimulateResult {
   equity_curve: Array<{ date: string; equity: number; benchmark: number }>;
   monthly_returns: Array<{ month: string; strategy_return: number; benchmark_return: number; excess_return: number }>;
 }
+
+// ==================== 股票池 ====================
+
+export interface PoolItem {
+  symbol: string;
+  name: string;
+  market: string;
+  industry?: string;
+  total_score: number;
+  quality_score: number;
+  valuation_score: number;
+  growth_score: number;
+  trend_score: number;
+  risk_score: number;
+  rating: string;
+  reason?: string;
+  latest_close?: number;
+  pe?: number;
+  pb?: number;
+  volatility?: number;
+  price_change?: number;
+}
+
+export interface PoolResponse {
+  type: string;
+  count: number;
+  date: string;
+  items: PoolItem[];
+}
+
+// ==================== 报告列表 ====================
+
+export interface ReportListResponse {
+  items: ReportItem[];
+  total: number;
+}
+
+export interface ResearchReportListResponse {
+  reports: ResearchReportItem[];
+  total: number;
+}
+
+// ==================== 管理后台 ====================
+
+export interface AdminStats {
+  total_stocks: number;
+  total_signals: number;
+  total_users: number;
+  total_reports: number;
+  db_size: string;
+  total_research_reports: number;
+}
+
+export interface AdminTableInfo {
+  name: string;
+  row_count: number;
+}
+
+export interface AdminTableData {
+  columns: string[];
+  rows: Array<Record<string, any>>;
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface StockCount {
+  total: number;
+  a_share: number;
+  hk: number;
+}
+
+export interface NotificationConfig {
+  email_smtp_host: string;
+  email_smtp_port: string;
+  email_sender: string;
+  email_password: string;
+  email_recipient: string;
+  feishu_webhook: string;
+  feishu_enabled: string;
+}
+
+export interface ApiMessage {
+  message: string;
+}

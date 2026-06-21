@@ -11,6 +11,14 @@ import type {
   BacktestResult,
   SimulateHolding,
   SimulateResult,
+  PoolResponse,
+  ReportListResponse,
+  ReportItem,
+  AdminStats,
+  AdminTableInfo,
+  AdminTableData,
+  StockCount,
+  ApiMessage,
 } from "@/types";
 
 const API_BASE = "/api";
@@ -69,7 +77,7 @@ export const syncStocks = (market: string = "ALL") =>
   });
 
 export const getStockCount = () =>
-  fetchAPI<{ total: number; a_share: number; hk: number }>("/stocks/count");
+  fetchAPI<StockCount>("/stocks/count");
 
 export const getStockDetail = (symbol: string) =>
   fetchAPI<StockDetail>(`/stocks/${symbol}`);
@@ -94,7 +102,7 @@ export const getSignals = (params: {
 // ==================== 股票池 ====================
 
 export const getStockPool = (type: string) =>
-  fetchAPI<any>(`/pools?type=${type}`);
+  fetchAPI<PoolResponse>(`/pools?type=${type}`);
 
 // ==================== 报告 ====================
 
@@ -103,10 +111,10 @@ export const getReports = (params: { report_type?: string; page?: number; page_s
   Object.entries(params).forEach(([key, val]) => {
     if (val !== undefined && val !== null) searchParams.set(key, String(val));
   });
-  return fetchAPI<any>(`/reports?${searchParams.toString()}`);
+  return fetchAPI<ReportListResponse>(`/reports?${searchParams.toString()}`);
 };
 
-export const getReport = (id: number) => fetchAPI<any>(`/reports/${id}`);
+export const getReport = (id: number) => fetchAPI<ReportItem & { content_markdown: string; content_json: string }>(`/reports/${id}`);
 
 export const getResearchReports = (params: { symbol?: string; page?: number; page_size?: number; refresh?: boolean } = {}) => {
   const searchParams = new URLSearchParams();
@@ -117,13 +125,13 @@ export const getResearchReports = (params: { symbol?: string; page?: number; pag
 };
 
 export const generateReport = (params: { report_type: string; stock_symbol?: string; style?: string }) =>
-  fetchAPI<any>(`/reports/generate?report_type=${params.report_type}${params.stock_symbol ? `&stock_symbol=${params.stock_symbol}` : ""}${params.style ? `&style=${params.style}` : ""}`, {
+  fetchAPI<ApiMessage>(`/reports/generate?report_type=${params.report_type}${params.stock_symbol ? `&stock_symbol=${params.stock_symbol}` : ""}${params.style ? `&style=${params.style}` : ""}`, {
     method: "POST",
     timeoutMs: 120000,
   });
 
 export const generateStyleReport = (style: string) =>
-  fetchAPI<any>(`/reports/generate-style?style=${style}`, {
+  fetchAPI<ApiMessage>(`/reports/generate-style?style=${style}`, {
     method: "POST",
     timeoutMs: 120000,
   });
@@ -211,7 +219,7 @@ export const saveSetting = (key: string, value: string) =>
 // ==================== 管理 ====================
 
 export const getAdminStats = () =>
-  fetchAPI<{ total_stocks: number; total_signals: number; total_users: number; total_reports: number; total_research_reports: number; db_size: string }>("/admin/stats");
+  fetchAPI<AdminStats>("/admin/stats");
 
 export const getAdminUsers = () =>
   fetchAPI<{ id: number; username: string; display_name: string; email: string; role: string; is_active: boolean; created_at: string }[]>("/admin/users");
@@ -228,10 +236,10 @@ export const disableAdminUser = (id: number) =>
   });
 
 export const getAdminTables = () =>
-  fetchAPI<{ name: string; row_count: number }[]>("/admin/tables");
+  fetchAPI<AdminTableInfo[]>("/admin/tables");
 
 export const getAdminTableData = (tableName: string, page: number = 1, pageSize: number = 50) =>
-  fetchAPI<{ columns: string[]; total: number; page: number; page_size: number; data: Record<string, any>[] }>(`/admin/tables/${tableName}?page=${page}&page_size=${pageSize}`);
+  fetchAPI<AdminTableData>(`/admin/tables/${tableName}?page=${page}&page_size=${pageSize}`);
 
 // ==================== API管理 ====================
 
