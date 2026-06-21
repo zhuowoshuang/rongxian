@@ -9,6 +9,7 @@ import GlassCard from "@/components/ui/GlassCard";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonTable } from "@/components/ui/Skeleton";
 import { showToast } from "@/components/ui/Toast";
+import TopSearch from "@/components/TopSearch";
 
 export default function PoolsPage() {
   const { t } = useTranslation();
@@ -40,6 +41,8 @@ export default function PoolsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+      <TopSearch />
+
       <h1 className="text-xl font-bold text-white flex items-center gap-2">
         <span className="w-1 h-6 bg-primary-500 rounded-full" />
         {t("pools.title")}

@@ -141,7 +141,14 @@ export default function ReportsPage() {
     setDownloadingPdf(null);
   };
 
-  const handleView = async (id: number) => { const report = await getReport(id); setSelectedReport(report); };
+  const handleView = async (id: number) => {
+    try {
+      const report = await getReport(id);
+      setSelectedReport(report);
+    } catch (e: any) {
+      showToast("error", e.message || t("common.loadFailed"));
+    }
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">

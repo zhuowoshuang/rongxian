@@ -145,30 +145,32 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-white/[0.06]">
-            <p className="text-xs text-dark-muted text-center mb-3">{t("auth.quickLogin")}</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { u: "admin", p: "admin123", r: t("auth.admin"), color: "text-purple-400 bg-purple-500/10" },
-                { u: "demo", p: "demo123", r: t("auth.demo"), color: "text-blue-400 bg-blue-500/10" },
-                { u: "analyst", p: "analyst123", r: t("auth.analyst"), color: "text-emerald-400 bg-emerald-500/10" },
-                { u: "guest", p: "guest123", r: t("auth.guest"), color: "text-gray-400 bg-gray-500/10" },
-              ].map((acc) => (
-                <button
-                  key={acc.u}
-                  type="button"
-                  onClick={() => fillAccount(acc.u, acc.p)}
-                  className="p-2.5 rounded-xl transition-all text-left border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.1]"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${acc.color}`}>{acc.r}</span>
-                  </div>
-                  <p className="text-xs font-medium text-dark-text mt-1">{acc.u}</p>
-                  <p className="text-[10px] text-dark-muted">{acc.p}</p>
-                </button>
-              ))}
+          {process.env.NODE_ENV === "development" && (
+            <div className="mt-6 pt-5 border-t border-white/[0.06]">
+              <p className="text-xs text-dark-muted text-center mb-3">{t("auth.quickLogin")}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { u: "admin", p: "admin123", r: t("auth.admin"), color: "text-purple-400 bg-purple-500/10" },
+                  { u: "demo", p: "demo123", r: t("auth.demo"), color: "text-blue-400 bg-blue-500/10" },
+                  { u: "analyst", p: "analyst123", r: t("auth.analyst"), color: "text-emerald-400 bg-emerald-500/10" },
+                  { u: "guest", p: "guest123", r: t("auth.guest"), color: "text-gray-400 bg-gray-500/10" },
+                ].map((acc) => (
+                  <button
+                    key={acc.u}
+                    type="button"
+                    onClick={() => fillAccount(acc.u, acc.p)}
+                    className="p-2.5 rounded-xl transition-all text-left border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.1]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${acc.color}`}>{acc.r}</span>
+                    </div>
+                    <p className="text-xs font-medium text-dark-text mt-1">{acc.u}</p>
+                    <p className="text-[10px] text-dark-muted">{acc.p}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-white/20 mt-6">

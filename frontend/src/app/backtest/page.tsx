@@ -8,23 +8,11 @@ import { useTranslation } from "@/lib/i18n";
 import GlassCard from "@/components/ui/GlassCard";
 import TabSwitch from "@/components/ui/TabSwitch";
 import EmptyState from "@/components/ui/EmptyState";
+import TopSearch from "@/components/TopSearch";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
 import { showToast } from "@/components/ui/Toast";
 import { Trash2, Plus, Play, Loader2, Search } from "lucide-react";
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload?.length) {
-    return (
-      <div className="bg-dark-card border border-white/10 rounded-lg px-3 py-2 shadow-xl backdrop-blur-xl">
-        <p className="text-xs text-dark-muted mb-1">{label}</p>
-        {payload.map((p: any, i: number) => (
-          <p key={i} className="text-sm" style={{ color: p.color }}>{p.name}: <span className="font-mono font-bold">{typeof p.value === "number" ? p.value.toFixed(2) : p.value}</span></p>
-        ))}
-      </div>
-    );
-  }
-  return null;
-};
+import ChartTooltip from "@/components/ui/ChartTooltip";
 
 export default function BacktestPage() {
   const { t } = useTranslation();
@@ -114,6 +102,7 @@ export default function BacktestPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+      <TopSearch />
       <h1 className="text-xl font-bold text-white flex items-center gap-2">
         <span className="w-1 h-6 bg-primary-500 rounded-full" />
         {t("backtest.title")}
@@ -272,7 +261,7 @@ export default function BacktestPage() {
                   <CartesianGrid stroke="#1E293B" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94A3B8" }} interval="preserveStartEnd" />
                   <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip />} />
                   <Legend wrapperStyle={{ color: "#94A3B8" }} />
                   <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={2} dot={false} name={t("backtest.strategyEquity")} />
                   <Line type="monotone" dataKey="benchmark" stroke="#94A3B8" strokeWidth={1} dot={false} name={t("backtest.benchmark")} />
@@ -288,7 +277,7 @@ export default function BacktestPage() {
                   <CartesianGrid stroke="#1E293B" />
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} />
                   <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="excess_return" fill="#6366f1" name={t("backtest.excessReturnPct")} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -347,7 +336,7 @@ export default function BacktestPage() {
                     <CartesianGrid stroke="#1E293B" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94A3B8" }} interval="preserveStartEnd" />
                     <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Legend wrapperStyle={{ color: "#94A3B8" }} />
                     <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={2} dot={false} name={t("backtest.portfolioValue")} />
                     <Line type="monotone" dataKey="benchmark" stroke="#94A3B8" strokeWidth={1} dot={false} name={t("backtest.benchmarkLabel")} />
@@ -365,7 +354,7 @@ export default function BacktestPage() {
                     <CartesianGrid stroke="#1E293B" />
                     <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} />
                     <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="strategy_return" fill="#6366f1" name={t("backtest.portfolioReturn")} radius={[2, 2, 0, 0]} />
                     <Bar dataKey="benchmark_return" fill="#94A3B8" name={t("backtest.benchmarkReturn")} radius={[2, 2, 0, 0]} />
                     <Bar dataKey="excess_return" fill="#10b981" name={t("backtest.excessReturnLabel")} radius={[2, 2, 0, 0]} />

@@ -12,20 +12,7 @@ import TabSwitch from "@/components/ui/TabSwitch";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { signalTypeLabel, signalTypeClass, renderStars, formatPercent, getChangeColor, marketLabel } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload?.length) {
-    return (
-      <div className="bg-dark-card border border-white/10 rounded-lg px-3 py-2 shadow-xl backdrop-blur-xl">
-        <p className="text-xs text-dark-muted mb-1">{label}</p>
-        {payload.map((p: any, i: number) => (
-          <p key={i} className="text-sm" style={{ color: p.color }}>{p.name}: <span className="font-mono font-bold">{p.value?.toFixed(2)}</span></p>
-        ))}
-      </div>
-    );
-  }
-  return null;
-};
+import ChartTooltip from "@/components/ui/ChartTooltip";
 
 export default function StockDetailPage() {
   const { t } = useTranslation();
@@ -135,7 +122,7 @@ export default function StockDetailPage() {
                 <CartesianGrid stroke="#1E293B" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94A3B8" }} interval="preserveStartEnd" />
                 <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<ChartTooltip />} />
                 <Line type="monotone" dataKey="close" stroke="#6366f1" strokeWidth={2} dot={false} name={t("stock.closePrice")} />
                 <Line type="monotone" dataKey="ma20" stroke="#10B981" strokeWidth={1} dot={false} name="MA20" connectNulls={false} />
               </LineChart>
