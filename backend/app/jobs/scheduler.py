@@ -89,23 +89,34 @@ def _push_daily_notification():
 
 def daily_refresh_job():
     """每日收盘后刷新数据、同步研报、推送通知"""
+    errors = []
+
     try:
         from app.seed import refresh_daily
         refresh_daily()
     except Exception as e:
         logger.error(f"Daily refresh failed: {e}")
+        errors.append(f"数据刷新失败: {e}")
 
     # 同步研报
     try:
         _sync_top_stock_reports()
     except Exception as e:
         logger.error(f"Research report sync failed: {e}")
+        errors.append(f"研报同步失败: {e}")
 
     # 推送每日通知
     try:
         _push_daily_notification()
     except Exception as e:
         logger.error(f"Daily notification failed: {e}")
+        errors.append(f"通知推送失败: {e}")
+
+    # 如果有失败，记录汇总日志
+    if errors:
+        logger.error(f"每日任务完成但有 {len(errors)} 个错误: {'; '.join(errors)}")
+    else:
+        logger.info("每日任务全部完成")
 
 
 def start_scheduler():

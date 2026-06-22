@@ -14,7 +14,7 @@ from app.db.session import engine
 # 导入所有模型（确保表被创建）
 from app.models import stock, daily_price, financial_metric, technical_indicator
 from app.models import stock_score, trade_signal, report, portfolio, user, setting
-from app.models import research_report, api_config
+from app.models import research_report, api_config, stock_status_history
 
 # 导入路由
 from app.api.dashboard import router as dashboard_router
@@ -141,13 +141,17 @@ def root():
 
 @app.get("/api/health")
 def health():
-    """健康检查（含数据库连通性）"""
+    """健康检查（含数据库和 Redis 连通性）"""
     from app.db.session import SessionLocal
+    from app.core.redis import is_redis_available
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         db.execute(text("SELECT 1"))
-        db.close()
         db_ok = True
     except Exception:
         db_ok = False
-    return {"status": "ok" if db_ok else "degraded", "database": "ok" if db_ok else "error"}
+    finally:
+        db.close()
+    redis_ok = is_redis_available()
+    status = "ok" if db_ok and redis_ok else ("degraded" if db_ok else "error")
+    return {"status": status, "database": "ok" if db_ok else "error", "redis": "ok" if redis_ok else "unavailable"}

@@ -1,0 +1,43 @@
+"""投资风格配置"""
+
+STYLE_CONFIG = {
+    "steady": {
+        "name": "稳健型",
+        "icon": "🛡️",
+        "desc": "追求稳定收益，注重风险控制，偏好低波动、高股息的大盘蓝筹",
+        "color": "blue",
+        "max_position": 60,
+        "single_stock_max": 8,
+        "score_weights": {"quality": 1.5, "valuation": 1.3, "growth": 0.8, "trend": 0.7, "risk": 1.5},
+        "min_score": 70,
+        "risk_tolerance": "低",
+        "suitable": "风险厌恶型投资者、退休人群、资金保值需求者",
+        "strategy_desc": "以基本面扎实、盈利能力稳定的蓝筹股为核心，辅以高股息标的，通过分散持仓降低波动，追求长期稳健增值。",
+    },
+    "aggressive": {
+        "name": "进取型",
+        "icon": "🚀",
+        "desc": "追求超额收益，承受较高波动，偏好高成长、强趋势标的",
+        "color": "purple",
+        "max_position": 90,
+        "single_stock_max": 15,
+        "score_weights": {"quality": 0.8, "valuation": 0.7, "growth": 1.5, "trend": 1.5, "risk": 0.6},
+        "min_score": 60,
+        "risk_tolerance": "高",
+        "suitable": "风险承受能力较强的年轻人、专业投资者、追求高收益者",
+        "strategy_desc": "聚焦高成长赛道和强势趋势标的，适度集中持仓，通过精选个股和波段操作追求显著超额收益。",
+    },
+    "conservative": {
+        "name": "保守型",
+        "icon": "🏦",
+        "desc": "以本金安全为第一目标，偏好低估值、高安全边际的价值股",
+        "color": "green",
+        "max_position": 40,
+        "single_stock_max": 6,
+        "score_weights": {"quality": 1.3, "valuation": 1.5, "growth": 0.6, "trend": 0.5, "risk": 1.8},
+        "min_score": 75,
+        "risk_tolerance": "极低",
+        "suitable": "风险极度厌恶者、大资金保守配置、资产保值需求者",
+        "strategy_desc": "严格筛选低估值、高安全边际的标的，仓位严格控制，宁可错过不可做错，以绝对收益为目标。",
+    },
+}

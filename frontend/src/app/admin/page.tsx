@@ -15,6 +15,12 @@ import {
   getAdminSignals, updateAdminSignal, deleteAdminSignal,
 } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
+import type {
+  AdminStats, AdminStockItem, AdminStockResponse,
+  AdminScoreItem, AdminScoreResponse,
+  AdminSignalItem, AdminSignalResponse,
+  AdminUserItem, ApiConfigItem, AdminTableInfo, AdminTableDataResponse,
+} from "@/types";
 import GlassCard from "@/components/ui/GlassCard";
 import TabSwitch from "@/components/ui/TabSwitch";
 import { SkeletonCard } from "@/components/ui/Skeleton";
@@ -151,7 +157,7 @@ function Pagination({ page, total, pageSize, onChange }: { page: number; total: 
 
 function OverviewTab() {
   const { t } = useTranslation();
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -186,12 +192,12 @@ function OverviewTab() {
 
 function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
   const { t } = useTranslation();
-  const [stocks, setStocks] = useState<any>({ items: [], total: 0 });
+  const [stocks, setStocks] = useState<AdminStockResponse>({ items: [], total: 0, page: 1, page_size: 50 });
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
   const [market, setMarket] = useState("");
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<AdminStockItem | null>(null);
   const [addingSymbol, setAddingSymbol] = useState("");
   const [adding, setAdding] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -218,27 +224,27 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
     setAdding(true);
     try {
       const result = await adminFetchStock(addingSymbol.trim());
-      showMsg("ok", `已添加 ${addingSymbol}: ${result.steps?.join(", ")}`);
+      showMsg("ok", `${t("admin.added")} ${addingSymbol}: ${result.steps?.join(", ")}`);
       setAddingSymbol("");
       fetchStocks();
     } catch (e: any) { showMsg("err", e.message || t("admin.addFailed")); }
     setAdding(false);
   };
 
-  const handleSave = async (stock: any) => {
+  const handleSave = async (stock: AdminStockItem) => {
     try {
       await updateAdminStock(stock.id, { name: stock.name, industry: stock.industry, status: stock.status });
-      showMsg("ok", `${stock.symbol} 已更新`);
+      showMsg("ok", `${stock.symbol} ${t("admin.updated")}`);
       setEditing(null);
       fetchStocks();
     } catch (e: any) { showMsg("err", e.message || t("admin.updateFailed")); }
   };
 
-  const handleDelete = async (stock: any) => {
-    if (!confirm(`确认删除 ${stock.symbol} ${stock.name}？\n将同时删除关联的行情、财务、评分、信号数据。`)) return;
+  const handleDelete = async (stock: AdminStockItem) => {
+    if (!confirm(t("admin.confirmDeleteStock", { symbol: stock.symbol, name: stock.name }))) return;
     try {
       await deleteAdminStock(stock.id);
-      showMsg("ok", `${stock.symbol} 已删除`);
+      showMsg("ok", t("admin.deletedSymbol", { symbol: stock.symbol }));
       fetchStocks();
     } catch (e: any) { showMsg("err", e.message || t("admin.deleteFailed")); }
   };
@@ -262,7 +268,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
           </button>
         </div>
         <div className="flex gap-2 mt-3">
-          <input value={addingSymbol} onChange={(e) => setAddingSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAdd()} placeholder="输入股票代码，如 600519" className="flex-1 max-w-xs px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text placeholder:text-dark-muted" />
+          <input value={addingSymbol} onChange={(e) => setAddingSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAdd()} placeholder={t("admin.stockPlaceholder")} className="flex-1 max-w-xs px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text placeholder:text-dark-muted" />
           <button onClick={handleAdd} disabled={adding || !addingSymbol.trim()} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500/15 text-primary-400 border border-primary-500/30 rounded-lg text-sm hover:bg-primary-500/25 disabled:opacity-50 transition-colors">
             <Plus className="w-4 h-4" />
             {adding ? t("admin.fetching") : t("admin.addFetch")}
@@ -283,7 +289,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                 </tr>
               </thead>
               <tbody>
-                {stocks.items?.map((s: any) => (
+                {stocks.items?.map((s: AdminStockItem) => (
                   <tr key={s.id} className="border-b border-white/[0.03] hover:bg-white/[0.03]">
                     <td className="py-2.5 px-3 font-mono text-xs text-primary-400">{s.symbol}</td>
                     <td className="py-2.5 px-3">
@@ -342,12 +348,12 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
 
 function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
   const { t } = useTranslation();
-  const [scores, setScores] = useState<any>({ items: [], total: 0 });
+  const [scores, setScores] = useState<AdminScoreResponse>({ items: [], total: 0, page: 1, page_size: 50 });
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [rating, setRating] = useState("");
   const [page, setPage] = useState(1);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<AdminScoreItem | null>(null);
 
   const fetchScores = useCallback(() => {
     setLoading(true);
@@ -367,7 +373,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
         risk_score: editing.risk_score,
         rating: editing.rating,
       });
-      showMsg("ok", `评分已更新，总分: ${result.total_score}`);
+      showMsg("ok", t("admin.scoreUpdated", { score: result.total_score }));
       setEditing(null);
       fetchScores();
     } catch (e: any) { showMsg("err", e.message || t("admin.updateFailed")); }
@@ -381,7 +387,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
             <SearchBar value={keyword} onChange={setKeyword} placeholder={t("admin.scoreSearch")} onSearch={() => { setPage(1); fetchScores(); }} />
           </div>
           <select value={rating} onChange={(e) => { setRating(e.target.value); setPage(1); }} className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text">
-            <option value="">全部评级</option>
+            <option value="">{t("admin.allRatings")}</option>
             {["BUY", "ADD", "WATCH", "REDUCE", "SELL"].map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
@@ -399,7 +405,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                 </tr>
               </thead>
               <tbody>
-                {scores.items?.map((s: any) => {
+                {scores.items?.map((s: AdminScoreItem) => {
                   const isEditing = editing?.id === s.id;
                   return (
                     <tr key={s.id} className={`border-b border-white/[0.03] ${isEditing ? "bg-primary-500/[0.05]" : "hover:bg-white/[0.03]"}`}>
@@ -456,13 +462,13 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
 
 function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
   const { t } = useTranslation();
-  const [signals, setSignals] = useState<any>({ items: [], total: 0 });
+  const [signals, setSignals] = useState<AdminSignalResponse>({ items: [], total: 0, page: 1, page_size: 50 });
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [sigType, setSigType] = useState("");
   const [sigStatus, setSigStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<AdminSignalItem | null>(null);
 
   const fetchSignals = useCallback(() => {
     setLoading(true);
@@ -487,16 +493,16 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
     } catch (e: any) { showMsg("err", e.message || t("admin.updateFailed")); }
   };
 
-  const handleExpire = async (sig: any) => {
+  const handleExpire = async (sig: AdminSignalItem) => {
     try {
       await updateAdminSignal(sig.id, { status: "EXPIRED" });
-      showMsg("ok", `${sig.signal_type} 信号已作废`);
+      showMsg("ok", t("admin.signalVoided", { type: sig.signal_type }));
       fetchSignals();
     } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
-  const handleDelete = async (sig: any) => {
-    if (!confirm(`确认删除 ${sig.symbol} 的 ${sig.signal_type} 信号？`)) return;
+  const handleDelete = async (sig: AdminSignalItem) => {
+    if (!confirm(t("admin.confirmDeleteSignal", { symbol: sig.symbol, type: sig.signal_type }))) return;
     try {
       await deleteAdminSignal(sig.id);
       showMsg("ok", t("admin.signalDeleted"));
@@ -512,11 +518,11 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
             <SearchBar value={keyword} onChange={setKeyword} placeholder={t("admin.signalSearch")} onSearch={() => { setPage(1); fetchSignals(); }} />
           </div>
           <select value={sigType} onChange={(e) => { setSigType(e.target.value); setPage(1); }} className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text">
-            <option value="">全部类型</option>
+            <option value="">{t("admin.allTypes")}</option>
             {["BUY", "ADD", "WATCH", "REDUCE", "SELL"].map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <select value={sigStatus} onChange={(e) => { setSigStatus(e.target.value); setPage(1); }} className="px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-sm text-dark-text">
-            <option value="">全部状态</option>
+            <option value="">{t("admin.allStatus")}</option>
             <option value="ACTIVE">ACTIVE</option>
             <option value="EXPIRED">EXPIRED</option>
             <option value="EXECUTED">EXECUTED</option>
@@ -536,7 +542,7 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
                 </tr>
               </thead>
               <tbody>
-                {signals.items?.map((s: any) => {
+                {signals.items?.map((s: AdminSignalItem) => {
                   const isEditing = editing?.id === s.id;
                   return (
                     <tr key={s.id} className={`border-b border-white/[0.03] ${isEditing ? "bg-primary-500/[0.05]" : "hover:bg-white/[0.03]"}`}>
@@ -605,14 +611,14 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
 
 function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
   const { t } = useTranslation();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getAdminUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const handleRoleToggle = async (user: any) => {
+  const handleRoleToggle = async (user: AdminUserItem) => {
     const newRole = user.role === "admin" ? "user" : "admin";
     if (!confirm(`${user.username}: ${user.role} → ${newRole}?`)) return;
     try {
@@ -622,7 +628,7 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
     } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
-  const handleActiveToggle = async (user: any) => {
+  const handleActiveToggle = async (user: AdminUserItem) => {
     try {
       if (user.is_active) {
         await disableAdminUser(user.id);
@@ -686,9 +692,9 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
 
 function DatabaseTab() {
   const { t } = useTranslation();
-  const [tables, setTables] = useState<any[]>([]);
+  const [tables, setTables] = useState<AdminTableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [tableData, setTableData] = useState<any>(null);
+  const [tableData, setTableData] = useState<AdminTableDataResponse | null>(null);
   const [tablePage, setTablePage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
@@ -734,7 +740,7 @@ function DatabaseTab() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-white font-mono">{selectedTable}</h3>
-                <span className="text-xs text-dark-muted">共 {tableData.total} 条</span>
+                <span className="text-xs text-dark-muted">{t("admin.totalItems", { total: tableData.total })}</span>
               </div>
               <div className="overflow-x-auto max-h-[400px]">
                 <table className="w-full text-xs">
@@ -746,7 +752,7 @@ function DatabaseTab() {
                     </tr>
                   </thead>
                   <tbody>
-                    {tableData.data.map((row: any, i: number) => (
+                    {tableData.data.map((row: Record<string, unknown>, i: number) => (
                       <tr key={i} className="border-b border-white/[0.03] hover:bg-white/[0.03]">
                         {tableData.columns.map((col: string) => (
                           <td key={col} className="py-2 px-2 text-dark-text font-mono whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
@@ -773,9 +779,9 @@ function DatabaseTab() {
 
 function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
   const { t } = useTranslation();
-  const [configs, setConfigs] = useState<any[]>([]);
+  const [configs, setConfigs] = useState<ApiConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<ApiConfigItem | null>(null);
   const [testing, setTesting] = useState<number | null>(null);
 
   const fetchConfigs = () => {
@@ -785,20 +791,20 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
 
   useEffect(() => { fetchConfigs(); }, []);
 
-  const handleSave = async (config: any) => {
+  const handleSave = async (config: Partial<ApiConfigItem>) => {
     try {
       await saveApiConfig(config);
-      showMsg("ok", `${config.provider} 配置已保存`);
+      showMsg("ok", t("admin.configSaved", { provider: config.provider }));
       fetchConfigs();
       setEditing(null);
-    } catch (e: any) { showMsg("err", e.message || "保存失败"); }
+    } catch (e: any) { showMsg("err", e.message || t("admin.saveFailed")); }
   };
 
   const handleDelete = async (id: number, provider: string) => {
-    if (!confirm(`确认删除 ${provider} 配置？`)) return;
+    if (!confirm(t("admin.confirmDeleteConfig", { provider }))) return;
     try {
       await deleteApiConfig(id);
-      showMsg("ok", "已删除");
+      showMsg("ok", t("admin.deleted"));
       fetchConfigs();
     } catch (e: any) { showMsg("err", e.message || t("admin.deleteFailed")); }
   };
@@ -860,7 +866,7 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
   );
 }
 
-function ApiConfigForm({ initial, onSave, onCancel }: { initial?: any; onSave: (c: any) => void; onCancel: () => void }) {
+function ApiConfigForm({ initial, onSave, onCancel }: { initial?: ApiConfigItem; onSave: (c: Partial<ApiConfigItem>) => void; onCancel: () => void }) {
   const { t } = useTranslation();
   const [form, setForm] = useState({
     provider: initial?.provider || "",
@@ -903,7 +909,7 @@ function ApiConfigForm({ initial, onSave, onCancel }: { initial?: any; onSave: (
         <input type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={t("admin.leaveEmpty")} className="w-full mt-1" />
       </div>
       <div>
-        <label className="text-xs text-dark-muted">基础URL</label>
+        <label className="text-xs text-dark-muted">{t("admin.baseUrl")}</label>
         <input value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.example.com" className="w-full mt-1" />
       </div>
       <div>

@@ -77,7 +77,7 @@ def sync_stock_list(db: Session, market: str = "ALL") -> dict:
     for mkt, currency in markets:
         try:
             stocks = _fetch_akshare_stock_list(mkt)
-            print(f"[stock_sync] {mkt}: 获取到 {len(stocks)} 只股票")
+            logger.info(f"{mkt}: 获取到 {len(stocks)} 只股票")
 
             for s in stocks:
                 existing = db.query(Stock).filter(Stock.symbol == s["symbol"]).first()
@@ -101,7 +101,7 @@ def sync_stock_list(db: Session, market: str = "ALL") -> dict:
 
             db.commit()
         except Exception as e:
-            print(f"[stock_sync] {mkt} 同步失败: {e}")
+            logger.error(f"{mkt} 同步失败: {e}")
             db.rollback()
 
     return {"added": added, "updated": updated, "total": total}

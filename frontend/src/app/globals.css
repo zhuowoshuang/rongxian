@@ -10,8 +10,34 @@
   --background: #0B1120;
   --foreground: #E2E8F0;
   --card-bg: rgba(255, 255, 255, 0.03);
+  --card-bg-hover: rgba(255, 255, 255, 0.06);
   --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-hover: rgba(255, 255, 255, 0.12);
+  --card-inner-bg: rgba(255, 255, 255, 0.02);
+  --card-inner-border: rgba(255, 255, 255, 0.05);
   --glow-primary: rgba(99, 102, 241, 0.4);
+  --text-primary: #FFFFFF;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-table: #CBD5E1;
+  --surface: rgba(255, 255, 255, 0.05);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --input-placeholder: #64748b;
+  --border-row: rgba(255, 255, 255, 0.06);
+  --border-row-alt: rgba(255, 255, 255, 0.03);
+  --row-hover: rgba(255, 255, 255, 0.03);
+  --skeleton-bg: rgba(255, 255, 255, 0.06);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.2);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.4);
+  --scrollbar-track: transparent;
+  --sidebar-from: #0B1120;
+  --sidebar-to: #111827;
+  --sidebar-border: transparent;
+  --disclaimer-color: #475569;
+  --chart-grid: #1E293B;
+  --chart-text: #94A3B8;
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -30,51 +56,52 @@ body {
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
 }
 
-/* 自定义滚动条 - 深色主题 */
+/* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* 渐变背景 - 深色侧边栏 */
+/* 渐变背景 - 侧边栏 */
 .gradient-bg {
-  background: linear-gradient(180deg, #0B1120 0%, #111827 100%);
+  background: linear-gradient(180deg, var(--sidebar-from) 0%, var(--sidebar-to) 100%);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 /* 卡片样式 - 毛玻璃效果 */
 .card {
   @apply rounded-2xl p-6;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--card-border);
 }
 
 .card-hover {
   @apply card transition-all duration-300;
 }
 .card-hover:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--card-bg-hover);
+  border-color: var(--card-border-hover);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-card);
 }
 
 /* 内部卡片（嵌套在 .card 中） */
 .card-inner {
   @apply rounded-xl p-4;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--card-inner-bg);
+  border: 1px solid var(--card-inner-border);
 }
 
 /* 渐变边框卡片 */
@@ -166,10 +193,10 @@ body {
 /* 骨架屏动画 */
 .skeleton {
   @apply animate-skeleton-pulse rounded-lg;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--skeleton-bg);
 }
 
-/* 深色主题输入框 */
+/* 输入框 */
 input[type="text"],
 input[type="email"],
 input[type="password"],
@@ -178,9 +205,9 @@ input[type="search"],
 select,
 textarea {
   @apply rounded-xl px-4 py-2.5 text-sm transition-all;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #E2E8F0;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--foreground);
 }
 input:focus,
 select:focus,
@@ -191,7 +218,7 @@ textarea:focus {
 }
 input::placeholder,
 textarea::placeholder {
-  color: #64748b;
+  color: var(--input-placeholder);
 }
 
 /* 深色主题按钮 */
@@ -219,41 +246,41 @@ textarea::placeholder {
   color: #E2E8F0;
 }
 
-/* 深色表格 */
+/* 表格 */
 table {
   @apply w-full;
 }
 thead tr {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-row);
 }
 tbody tr {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border-row-alt);
   transition: background 0.15s;
 }
 tbody tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--row-hover);
 }
 th {
   @apply text-xs font-medium uppercase tracking-wider;
-  color: #64748b;
+  color: var(--text-muted);
 }
 td {
   @apply text-sm;
-  color: #CBD5E1;
+  color: var(--text-table);
 }
 
 /* 免责声明 */
 .disclaimer {
   @apply text-center text-xs py-4;
-  color: #475569;
+  color: var(--disclaimer-color);
 }
 
-/* Recharts 深色主题覆盖 */
+/* Recharts 图表覆盖 */
 .recharts-cartesian-grid line {
-  stroke: #1E293B;
+  stroke: var(--chart-grid);
 }
 .recharts-text {
-  fill: #94A3B8 !important;
+  fill: var(--chart-text) !important;
   font-size: 11px;
 }
 .recharts-tooltip-wrapper {
@@ -261,195 +288,141 @@ td {
 }
 
 /* ==================== 亮色主题 ==================== */
+/* 通过切换 CSS 变量实现主题切换，无需 !important 覆盖。
+   组件中使用 var(--xxx) 引用颜色，.light 只需改变量值。 */
 .light {
   --background: #F8FAFC;
   --foreground: #1E293B;
-  --card-bg: rgba(255, 255, 255, 0.8);
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --card-bg-hover: rgba(255, 255, 255, 1);
   --card-border: rgba(0, 0, 0, 0.08);
+  --card-border-hover: rgba(0, 0, 0, 0.12);
+  --card-inner-bg: rgba(0, 0, 0, 0.02);
+  --card-inner-border: rgba(0, 0, 0, 0.06);
   --glow-primary: rgba(99, 102, 241, 0.2);
+  --text-primary: #1E293B;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  --text-table: #334155;
+  --surface: rgba(0, 0, 0, 0.03);
+  --input-bg: #FFFFFF;
+  --input-border: #E2E8F0;
+  --input-placeholder: #94A3B8;
+  --border-row: #E2E8F0;
+  --border-row-alt: #F1F5F9;
+  --row-hover: rgba(99, 102, 241, 0.04);
+  --skeleton-bg: rgba(0, 0, 0, 0.06);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+  --scrollbar-track: rgba(0, 0, 0, 0.03);
+  --sidebar-from: #FFFFFF;
+  --sidebar-to: #F1F5F9;
+  --sidebar-border: #E2E8F0;
+  --disclaimer-color: #94A3B8;
+  --chart-grid: #E2E8F0;
+  --chart-text: #64748B;
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.light body {
-  background: #F8FAFC !important;
-  color: #1E293B !important;
-}
+/* --- Tailwind dark-* class overrides (组件中仍在使用的) --- */
+.light .text-dark-muted { color: var(--text-muted); }
+.light .text-dark-text { color: var(--text-primary); }
+.light .bg-dark-bg { background: var(--background); }
+.light .bg-dark-card { background: var(--card-bg); }
+.light .bg-dark-surface { background: #F1F5F9; }
+.light .border-dark-border { border-color: var(--card-border); }
 
-/* --- Tailwind dark palette overrides --- */
-.light .text-dark-muted { color: #64748B !important; }
-.light .text-dark-text { color: #1E293B !important; }
-.light .bg-dark-bg { background: #F8FAFC !important; }
-.light .bg-dark-card { background: #FFFFFF !important; }
-.light .bg-dark-surface { background: #F1F5F9 !important; }
-.light .border-dark-border { border-color: #E2E8F0 !important; }
+/* --- Tailwind white opacity class overrides (组件中仍在使用的) --- */
+.light [class*="bg-white/\[0\.03\]"] { background: rgba(0, 0, 0, 0.03); }
+.light [class*="bg-white/\[0\.05\]"] { background: rgba(0, 0, 0, 0.04); }
+.light [class*="bg-white/\[0\.06\]"] { background: rgba(0, 0, 0, 0.05); }
+.light [class*="bg-white/\[0\.08\]"] { background: rgba(0, 0, 0, 0.06); }
+.light [class*="bg-white/5"] { background: rgba(0, 0, 0, 0.04); }
+.light [class*="bg-white/10"] { background: rgba(0, 0, 0, 0.06); }
+.light [class*="border-white/\[0\.03\]"] { border-color: rgba(0, 0, 0, 0.06); }
+.light [class*="border-white/\[0\.06\]"] { border-color: rgba(0, 0, 0, 0.08); }
+.light [class*="border-white/\[0\.08\]"] { border-color: rgba(0, 0, 0, 0.1); }
+.light [class*="border-white/\[0\.1\]"] { border-color: rgba(0, 0, 0, 0.12); }
+.light [class*="border-white/\[0\.15\]"] { border-color: rgba(0, 0, 0, 0.15); }
+.light [class*="border-white/10"] { border-color: rgba(0, 0, 0, 0.1); }
 
-/* --- Transparent white → light-appropriate --- */
-.light [class*="bg-white/\[0\.03\]"] { background: rgba(0, 0, 0, 0.03) !important; }
-.light [class*="bg-white/\[0\.05\]"] { background: rgba(0, 0, 0, 0.04) !important; }
-.light [class*="bg-white/\[0\.06\]"] { background: rgba(0, 0, 0, 0.05) !important; }
-.light [class*="bg-white/\[0\.08\]"] { background: rgba(0, 0, 0, 0.06) !important; }
-.light [class*="bg-white/5"] { background: rgba(0, 0, 0, 0.04) !important; }
-.light [class*="bg-white/10"] { background: rgba(0, 0, 0, 0.06) !important; }
-.light [class*="border-white/\[0\.03\]"] { border-color: rgba(0, 0, 0, 0.06) !important; }
-.light [class*="border-white/\[0\.06\]"] { border-color: rgba(0, 0, 0, 0.08) !important; }
-.light [class*="border-white/\[0\.08\]"] { border-color: rgba(0, 0, 0, 0.1) !important; }
-.light [class*="border-white/\[0\.1\]"] { border-color: rgba(0, 0, 0, 0.12) !important; }
-.light [class*="border-white/\[0\.15\]"] { border-color: rgba(0, 0, 0, 0.15) !important; }
-.light [class*="border-white/10"] { border-color: rgba(0, 0, 0, 0.1) !important; }
+/* --- White text → dark text (组件中仍在使用的) --- */
+.light .text-white { color: var(--text-primary); }
+.light [class*="text-white/20"] { color: var(--text-secondary); }
+.light [class*="text-white/25"] { color: var(--text-secondary); }
+.light [class*="text-white/30"] { color: var(--text-secondary); }
+.light [class*="text-white/40"] { color: var(--text-muted); }
+.light [class*="text-white/50"] { color: var(--text-muted); }
+.light [class*="text-white/80"] { color: #334155; }
 
-/* --- White text → dark text --- */
-.light .text-white { color: #1E293B !important; }
-.light [class*="text-white/20"] { color: #94A3B8 !important; }
-.light [class*="text-white/25"] { color: #94A3B8 !important; }
-.light [class*="text-white/30"] { color: #94A3B8 !important; }
-.light [class*="text-white/40"] { color: #64748B !important; }
-.light [class*="text-white/50"] { color: #64748B !important; }
-.light [class*="text-white/80"] { color: #334155 !important; }
-
-/* --- Sidebar --- */
-.light .gradient-bg {
-  background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%) !important;
-  border-right: 1px solid #E2E8F0 !important;
-}
-
-/* --- Cards --- */
+/* --- Cards (box-shadow 需单独处理) --- */
 .light .card {
-  background: rgba(255, 255, 255, 0.9) !important;
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 .light .card-hover:hover {
-  background: rgba(255, 255, 255, 1) !important;
-  border-color: rgba(0, 0, 0, 0.12) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-}
-.light .card-inner {
-  background: rgba(0, 0, 0, 0.02) !important;
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 .light .card-glow::before {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05), transparent);
 }
 
-/* --- Skeleton --- */
-.light .skeleton {
-  background: rgba(0, 0, 0, 0.06) !important;
-}
-
-/* --- Inputs --- */
-.light input[type="text"],
-.light input[type="email"],
-.light input[type="password"],
-.light input[type="number"],
-.light input[type="search"],
-.light select,
-.light textarea {
-  background: #FFFFFF !important;
-  border: 1px solid #E2E8F0 !important;
-  color: #1E293B !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-}
+/* --- Inputs (box-shadow 需单独处理) --- */
 .light input:focus,
 .light select:focus,
 .light textarea:focus {
-  border-color: rgba(99, 102, 241, 0.5) !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
-.light input::placeholder,
-.light textarea::placeholder {
-  color: #94A3B8 !important;
+.light input,
+.light select,
+.light textarea {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* --- Buttons --- */
 .light .btn-ghost {
-  background: rgba(0, 0, 0, 0.03) !important;
-  color: #64748B !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  background: rgba(0, 0, 0, 0.03);
+  color: #64748B;
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 .light .btn-ghost:hover {
-  background: rgba(0, 0, 0, 0.06) !important;
-  color: #1E293B !important;
+  background: rgba(0, 0, 0, 0.06);
+  color: #1E293B;
 }
 .light .btn-secondary {
-  background: rgba(0, 0, 0, 0.04) !important;
-  color: #475569 !important;
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  background: rgba(0, 0, 0, 0.04);
+  color: #475569;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 .light .btn-secondary:hover {
-  background: rgba(0, 0, 0, 0.08) !important;
+  background: rgba(0, 0, 0, 0.08);
 }
 
-/* --- Tables --- */
-.light table thead tr {
-  border-bottom: 1px solid #E2E8F0 !important;
-}
-.light table tbody tr {
-  border-bottom: 1px solid #F1F5F9 !important;
-}
-.light table tbody tr:hover {
-  background: rgba(99, 102, 241, 0.04) !important;
-}
-.light table th {
-  color: #64748B !important;
-}
-.light table td {
-  color: #334155 !important;
-}
-
-/* --- Misc --- */
-.light .disclaimer {
-  color: #94A3B8 !important;
-}
-.light .star-empty {
-  color: #CBD5E1 !important;
-}
-.light .star {
-  color: #F59E0B !important;
-}
-
-/* --- Recharts --- */
-.light .recharts-cartesian-grid line {
-  stroke: #E2E8F0 !important;
-}
-.light .recharts-text {
-  fill: #64748B !important;
-}
+/* --- Recharts tooltip --- */
 .light .recharts-tooltip-wrapper .bg-dark-card {
-  background: #FFFFFF !important;
-  border-color: #E2E8F0 !important;
-  color: #1E293B !important;
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+  color: #1E293B;
 }
 
 /* --- Login page --- */
 .light .min-h-screen {
-  background: #F8FAFC !important;
+  background: #F8FAFC;
 }
 
 /* --- Colorful badges - keep visible --- */
-.light .bg-blue-500\/10 { background: rgba(59, 130, 246, 0.1) !important; }
-.light .bg-purple-500\/10 { background: rgba(139, 92, 246, 0.1) !important; }
-.light .bg-emerald-500\/10 { background: rgba(16, 185, 129, 0.1) !important; }
-.light .bg-amber-500\/10 { background: rgba(245, 158, 11, 0.1) !important; }
-.light .bg-red-500\/10 { background: rgba(239, 68, 68, 0.1) !important; }
-.light .bg-primary-500\/10 { background: rgba(99, 102, 241, 0.1) !important; }
-.light .bg-primary-500\/20 { background: rgba(99, 102, 241, 0.15) !important; }
-.light .bg-orange-500\/10 { background: rgba(249, 115, 22, 0.1) !important; }
-.light .bg-gray-500\/10 { background: rgba(100, 116, 139, 0.1) !important; }
+.light .bg-blue-500\/10 { background: rgba(59, 130, 246, 0.1); }
+.light .bg-purple-500\/10 { background: rgba(139, 92, 246, 0.1); }
+.light .bg-emerald-500\/10 { background: rgba(16, 185, 129, 0.1); }
+.light .bg-amber-500\/10 { background: rgba(245, 158, 11, 0.1); }
+.light .bg-red-500\/10 { background: rgba(239, 68, 68, 0.1); }
+.light .bg-primary-500\/10 { background: rgba(99, 102, 241, 0.1); }
+.light .bg-primary-500\/20 { background: rgba(99, 102, 241, 0.15); }
+.light .bg-orange-500\/10 { background: rgba(249, 115, 22, 0.1); }
+.light .bg-gray-500\/10 { background: rgba(100, 116, 139, 0.1); }
 
-/* --- Signal badges --- */
-.light .signal-buy { background: rgba(16, 185, 129, 0.12) !important; color: #059669 !important; }
-.light .signal-add { background: rgba(59, 130, 246, 0.12) !important; color: #2563EB !important; }
-.light .signal-watch { background: rgba(245, 158, 11, 0.12) !important; color: #D97706 !important; }
-.light .signal-reduce { background: rgba(249, 115, 22, 0.12) !important; color: #EA580C !important; }
-.light .signal-sell { background: rgba(239, 68, 68, 0.12) !important; color: #DC2626 !important; }
-
-/* --- Scrollbar --- */
-.light ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15) !important;
-}
-.light ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25) !important;
-}
-.light ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.03) !important;
-}
+/* --- Signal badges (颜色本身不随主题变) --- */
+.light .signal-buy { background: rgba(16, 185, 129, 0.12); color: #059669; }
+.light .signal-add { background: rgba(59, 130, 246, 0.12); color: #2563EB; }
+.light .signal-watch { background: rgba(245, 158, 11, 0.12); color: #D97706; }
+.light .signal-reduce { background: rgba(249, 115, 22, 0.12); color: #EA580C; }
+.light .signal-sell { background: rgba(239, 68, 68, 0.12); color: #DC2626; }

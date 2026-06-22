@@ -144,33 +144,35 @@ class EastMoneyProvider(DataProviderBase):
             lg = bs.login()
             if lg.error_code != '0':
                 return pd.DataFrame()
-            bs_code = f"sh.{symbol}" if symbol.startswith(("6", "5", "9")) else f"sz.{symbol}"
-            rs = bs.query_history_k_data_plus(
-                bs_code,
-                fields="date,open,high,low,close,volume,amount",
-                start_date=start_date.strftime("%Y-%m-%d"),
-                end_date=end_date.strftime("%Y-%m-%d"),
-                frequency="d",
-                adjustflag="2",  # 前复权
-            )
-            rows = []
-            while rs.next():
-                row = rs.get_row_data()
-                if row and len(row) >= 6:
-                    try:
-                        rows.append({
-                            "trade_date": datetime.strptime(row[0], "%Y-%m-%d").date(),
-                            "open": float(row[1]),
-                            "high": float(row[2]),
-                            "low": float(row[3]),
-                            "close": float(row[4]),
-                            "volume": int(float(row[5])) if row[5] else 0,
-                            "turnover": int(float(row[6])) if len(row) > 6 and row[6] else 0,
-                        })
-                    except (ValueError, IndexError):
-                        continue
-            bs.logout()
-            return pd.DataFrame(rows) if rows else pd.DataFrame()
+            try:
+                bs_code = f"sh.{symbol}" if symbol.startswith(("6", "5", "9")) else f"sz.{symbol}"
+                rs = bs.query_history_k_data_plus(
+                    bs_code,
+                    fields="date,open,high,low,close,volume,amount",
+                    start_date=start_date.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                    frequency="d",
+                    adjustflag="2",  # 前复权
+                )
+                rows = []
+                while rs.next():
+                    row = rs.get_row_data()
+                    if row and len(row) >= 6:
+                        try:
+                            rows.append({
+                                "trade_date": datetime.strptime(row[0], "%Y-%m-%d").date(),
+                                "open": float(row[1]),
+                                "high": float(row[2]),
+                                "low": float(row[3]),
+                                "close": float(row[4]),
+                                "volume": int(float(row[5])) if row[5] else 0,
+                                "turnover": int(float(row[6])) if len(row) > 6 and row[6] else 0,
+                            })
+                        except (ValueError, IndexError):
+                            continue
+                return pd.DataFrame(rows) if rows else pd.DataFrame()
+            finally:
+                bs.logout()
         except Exception as e:
             logger.debug(f"baostock fetch failed for {symbol}: {e}")
             return pd.DataFrame()

@@ -19,6 +19,16 @@ import type {
   AdminTableData,
   StockCount,
   ApiMessage,
+  ApiConfigItem,
+  UserQuotaItem,
+  ApiLogResponse,
+  ApiStatsResponse,
+  AdminStockResponse,
+  AdminScoreResponse,
+  AdminSignalResponse,
+  AdminUserItem,
+  FetchStockResult,
+  AdminTableDataResponse,
 } from "@/types";
 
 const API_BASE = "/api";
@@ -223,7 +233,7 @@ export const getAdminStats = () =>
   fetchAPI<AdminStats>("/admin/stats");
 
 export const getAdminUsers = () =>
-  fetchAPI<{ id: number; username: string; display_name: string; email: string; role: string; is_active: boolean; created_at: string }[]>("/admin/users");
+  fetchAPI<AdminUserItem[]>("/admin/users");
 
 export const updateAdminUser = (id: number, data: { role?: string; is_active?: boolean }) =>
   fetchAPI<{ status: string; message: string }>(`/admin/users/${id}`, {
@@ -245,86 +255,86 @@ export const getAdminTableData = (tableName: string, page: number = 1, pageSize:
 // ==================== API管理 ====================
 
 export const getApiConfigs = () =>
-  fetchAPI<any[]>("/admin/api-configs");
+  fetchAPI<ApiConfigItem[]>("/admin/api-configs");
 
-export const saveApiConfig = (config: any) =>
-  fetchAPI<any>("/admin/api-configs", { method: "POST", body: JSON.stringify(config) });
+export const saveApiConfig = (config: Partial<ApiConfigItem>) =>
+  fetchAPI<{ status: string; message: string; id: number }>("/admin/api-configs", { method: "POST", body: JSON.stringify(config) });
 
 export const deleteApiConfig = (id: number) =>
-  fetchAPI<any>(`/admin/api-configs/${id}`, { method: "DELETE" });
+  fetchAPI<{ status: string; message: string }>(`/admin/api-configs/${id}`, { method: "DELETE" });
 
 export const testApiConfig = (id: number) =>
-  fetchAPI<any>(`/admin/api-configs/${id}/test`, { method: "POST" });
+  fetchAPI<{ status: string; message: string }>(`/admin/api-configs/${id}/test`, { method: "POST" });
 
 export const getUserQuotas = () =>
-  fetchAPI<any[]>("/admin/user-quotas");
+  fetchAPI<UserQuotaItem[]>("/admin/user-quotas");
 
-export const updateUserQuota = (userId: number, quota: any) =>
-  fetchAPI<any>(`/admin/user-quotas/${userId}`, { method: "PUT", body: JSON.stringify(quota) });
+export const updateUserQuota = (userId: number, quota: Partial<UserQuotaItem>) =>
+  fetchAPI<{ status: string; message: string }>(`/admin/user-quotas/${userId}`, { method: "PUT", body: JSON.stringify(quota) });
 
 export const getApiLogs = (params: { page?: number; page_size?: number; user_id?: number; provider?: string } = {}) => {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, val]) => {
     if (val !== undefined && val !== null) searchParams.set(key, String(val));
   });
-  return fetchAPI<any>(`/admin/api-logs?${searchParams.toString()}`);
+  return fetchAPI<ApiLogResponse>(`/admin/api-logs?${searchParams.toString()}`);
 };
 
 export const getApiStats = () =>
-  fetchAPI<any>("/admin/api-stats");
+  fetchAPI<ApiStatsResponse>("/admin/api-stats");
 
 // ==================== 管理-股票管理 ====================
 
 export const getAdminStocks = (params: { keyword?: string; market?: string; status?: string; page?: number; page_size?: number } = {}) => {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") sp.set(k, String(v)); });
-  return fetchAPI<any>(`/admin/stocks?${sp.toString()}`);
+  return fetchAPI<AdminStockResponse>(`/admin/stocks?${sp.toString()}`);
 };
 
 export const updateAdminStock = (id: number, data: { name?: string; industry?: string; sector?: string; status?: string }) =>
-  fetchAPI<any>(`/admin/stocks/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  fetchAPI<{ status: string; message: string }>(`/admin/stocks/${id}`, { method: "PUT", body: JSON.stringify(data) });
 
 export const deleteAdminStock = (id: number) =>
-  fetchAPI<any>(`/admin/stocks/${id}`, { method: "DELETE" });
+  fetchAPI<{ status: string; message: string }>(`/admin/stocks/${id}`, { method: "DELETE" });
 
 export const adminSyncStocks = (market: string = "ALL") =>
-  fetchAPI<any>(`/admin/stocks/sync?market=${market}`, { method: "POST" });
+  fetchAPI<{ status: string; message: string; added: number; updated: number; total: number }>(`/admin/stocks/sync?market=${market}`, { method: "POST" });
 
 export const adminFetchStock = (symbol: string) =>
-  fetchAPI<any>(`/admin/stocks/fetch?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
+  fetchAPI<FetchStockResult>(`/admin/stocks/fetch?symbol=${encodeURIComponent(symbol)}`, { method: "POST" });
 
 // ==================== 管理-评分管理 ====================
 
 export const getAdminScores = (params: { keyword?: string; rating?: string; page?: number; page_size?: number } = {}) => {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") sp.set(k, String(v)); });
-  return fetchAPI<any>(`/admin/scores?${sp.toString()}`);
+  return fetchAPI<AdminScoreResponse>(`/admin/scores?${sp.toString()}`);
 };
 
 export const updateAdminScore = (id: number, data: { quality_score?: number; valuation_score?: number; growth_score?: number; trend_score?: number; risk_score?: number; rating?: string; reason_summary?: string }) =>
-  fetchAPI<any>(`/admin/scores/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  fetchAPI<{ status: string; message: string; total_score: number }>(`/admin/scores/${id}`, { method: "PUT", body: JSON.stringify(data) });
 
 // ==================== 管理-信号管理 ====================
 
 export const getAdminSignals = (params: { keyword?: string; signal_type?: string; status?: string; page?: number; page_size?: number } = {}) => {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") sp.set(k, String(v)); });
-  return fetchAPI<any>(`/admin/signals?${sp.toString()}`);
+  return fetchAPI<AdminSignalResponse>(`/admin/signals?${sp.toString()}`);
 };
 
 export const updateAdminSignal = (id: number, data: { signal_type?: string; signal_strength?: number; suggested_position?: number; entry_price?: number; target_price?: number; stop_loss_price?: number; holding_period?: string; status?: string }) =>
-  fetchAPI<any>(`/admin/signals/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  fetchAPI<{ status: string; message: string }>(`/admin/signals/${id}`, { method: "PUT", body: JSON.stringify(data) });
 
 export const deleteAdminSignal = (id: number) =>
-  fetchAPI<any>(`/admin/signals/${id}`, { method: "DELETE" });
+  fetchAPI<{ status: string; message: string }>(`/admin/signals/${id}`, { method: "DELETE" });
 
 // ==================== 管理-通用表操作 ====================
 
-export const addTableRow = (tableName: string, data: Record<string, any>) =>
-  fetchAPI<any>(`/admin/tables/${tableName}`, { method: "POST", body: JSON.stringify(data) });
+export const addTableRow = (tableName: string, data: Record<string, unknown>) =>
+  fetchAPI<{ status: string; id: number }>(`/admin/tables/${tableName}`, { method: "POST", body: JSON.stringify(data) });
 
-export const updateTableRow = (tableName: string, rowId: number, data: Record<string, any>) =>
-  fetchAPI<any>(`/admin/tables/${tableName}/${rowId}`, { method: "PUT", body: JSON.stringify(data) });
+export const updateTableRow = (tableName: string, rowId: number, data: Record<string, unknown>) =>
+  fetchAPI<{ status: string }>(`/admin/tables/${tableName}/${rowId}`, { method: "PUT", body: JSON.stringify(data) });
 
 export const deleteTableRow = (tableName: string, rowId: number) =>
-  fetchAPI<any>(`/admin/tables/${tableName}/${rowId}`, { method: "DELETE" });
+  fetchAPI<{ status: string }>(`/admin/tables/${tableName}/${rowId}`, { method: "DELETE" });

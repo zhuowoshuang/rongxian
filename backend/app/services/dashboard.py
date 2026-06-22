@@ -44,16 +44,16 @@ def get_dashboard_data(db: Session, today: date) -> dict:
     buy_add = dist["BUY"] + dist["ADD"]
     reduce_sell = dist["REDUCE"] + dist["SELL"]
     if buy_add > reduce_sell * 2:
-        market_status = "偏多"
+        market_status = "bullish"
         suggested_pos = "70-80%"
     elif buy_add > reduce_sell:
-        market_status = "中性偏多"
+        market_status = "mildly_bullish"
         suggested_pos = "50-70%"
     elif reduce_sell > buy_add * 2:
-        market_status = "偏空"
+        market_status = "bearish"
         suggested_pos = "20-30%"
     else:
-        market_status = "中性"
+        market_status = "neutral"
         suggested_pos = "40-60%"
 
     strategy_summary = {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getStockDetail } from "@/lib/api";
-import type { StockDetail } from "@/types";
+import type { StockDetail, PriceHistory, FinancialMetricItem, ResearchReportItem } from "@/types";
 import { useTranslation } from "@/lib/i18n";
 import TopSearch from "@/components/TopSearch";
 import ScoreBreakdown from "@/components/ScoreBreakdown";
@@ -111,10 +111,10 @@ export default function StockDetailPage() {
         <GlassCard title={t("stock.priceChart")}>
           <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={price_history.map((p: any, i: number, arr: any[]) => {
+              <LineChart data={price_history.map((p: PriceHistory, i: number, arr: PriceHistory[]) => {
                 if (i >= 19) {
                   const slice = arr.slice(i - 19, i + 1);
-                  const ma20 = slice.reduce((s: number, v: any) => s + v.close, 0) / slice.length;
+                  const ma20 = slice.reduce((s: number, v: PriceHistory) => s + v.close, 0) / slice.length;
                   return { ...p, ma20: Math.round(ma20 * 100) / 100 };
                 }
                 return { ...p, ma20: null };
@@ -143,7 +143,7 @@ export default function StockDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {financial_metrics.map((f: any, i: number) => (
+                {financial_metrics.map((f: FinancialMetricItem, i: number) => (
                   <tr key={i} className="border-b border-white/[0.03]">
                     <td className="py-2 px-3 font-medium text-dark-text">{f.period}</td>
                     <td className="py-2 px-3 text-right font-mono text-dark-text">{f.revenue?.toFixed(1)}</td>
@@ -219,7 +219,7 @@ export default function StockDetailPage() {
         <GlassCard title={t("stock.brokerReports")}>
           {reports && reports.length > 0 ? (
             <div className="space-y-3">
-              {reports.map((r: any, i: number) => (
+              {reports.map((r: ResearchReportItem, i: number) => (
                 <div key={i} className="p-4 bg-white/[0.03] rounded-xl border border-white/[0.06]">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">

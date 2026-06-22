@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import Optional
 import os
 import secrets
@@ -57,12 +58,15 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
 
+    @model_validator(mode="after")
+    def _ensure_jwt_secret(self) -> "Settings":
+        """在模型构造阶段自动填充 JWT_SECRET_KEY，避免运行时篡改实例"""
+        if not self.JWT_SECRET_KEY:
+            object.__setattr__(self, "JWT_SECRET_KEY", _get_or_generate_secret())
+        return self
+
 
 settings = Settings()
-
-# 若 JWT_SECRET_KEY 未配置，自动生成
-if not settings.JWT_SECRET_KEY:
-    settings.JWT_SECRET_KEY = _get_or_generate_secret()
 
 
 # ==================== API Key 加解密 ====================

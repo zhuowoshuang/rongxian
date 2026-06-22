@@ -61,8 +61,18 @@ def determine_signal_type(score: StockScore) -> tuple[str, int, str]:
     return SignalType.SELL, 1, "基本面恶化或评分极低，建议卖出"
 
 
-def calculate_position(signal_type: str, signal_strength: int) -> float:
-    """根据信号类型和强度计算建议仓位"""
+def calculate_position(
+    signal_type: str,
+    signal_strength: int,
+    existing_sector_pct: float = 0.0,
+    total_position_pct: float = 0.0,
+) -> float:
+    """
+    根据信号类型和强度计算建议仓位（含集中度限制）
+    Args:
+        existing_sector_pct: 同行业已持仓占比（0-1）
+        total_position_pct: 当前总仓位占比（0-1）
+    """
     position_map = {
         SignalType.BUY: {5: 8, 4: 6, 3: 5},
         SignalType.ADD: {4: 5, 3: 4, 2: 3},
@@ -70,21 +80,48 @@ def calculate_position(signal_type: str, signal_strength: int) -> float:
         SignalType.REDUCE: {2: 0, 1: 0},
         SignalType.SELL: {1: 0},
     }
-    return position_map.get(signal_type, {}).get(signal_strength, 0)
+    base = position_map.get(signal_type, {}).get(signal_strength, 0)
+    if base == 0:
+        return 0
+
+    # 单行业上限 30%：同行业已超 25% 时减半建议仓位
+    if existing_sector_pct > 0.25:
+        base = max(1, base // 2)
+
+    # 总仓位上限 90%：已超 85% 时减半建议仓位
+    if total_position_pct > 0.85:
+        base = max(1, base // 2)
+
+    return base
 
 
-def calculate_prices(price: DailyPrice, signal_type: str) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """计算入场价、目标价、止损价"""
+def calculate_prices(price: DailyPrice, signal_type: str, tech: Optional[TechnicalIndicator] = None) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """
+    计算入场价、目标价、止损价（波动率自适应）
+    使用布林带宽度或 ATR 估算波动率，动态调整目标和止损
+    """
     if not price.close:
         return None, None, None
 
     entry = price.close
+
+    # 基于技术指标估算波动率
+    vol_pct = 0.10  # 默认 10% 波动率
+    if tech and tech.boll_upper and tech.boll_lower and entry > 0:
+        # 布林带宽度作为波动率代理
+        boll_width = (tech.boll_upper - tech.boll_lower) / entry
+        vol_pct = max(0.05, min(0.25, boll_width))  # 限制在 5%-25%
+
     if signal_type in (SignalType.BUY, SignalType.ADD):
-        target = round(entry * 1.20, 2)  # 目标 +20%
-        stop_loss = round(entry * 0.92, 2)  # 止损 -8%
+        # 目标价 = 入场价 * (1 + 2 * 波动率)，至少 10%，最多 30%
+        target_mult = max(1.10, min(1.30, 1 + 2 * vol_pct))
+        # 止损价 = 入场价 * (1 - 波动率)，至少 5%，最多 12%
+        stop_mult = max(0.88, min(0.95, 1 - vol_pct))
+        target = round(entry * target_mult, 2)
+        stop_loss = round(entry * stop_mult, 2)
     elif signal_type == SignalType.REDUCE:
         target = None
-        stop_loss = round(entry * 0.95, 2)
+        stop_loss = round(entry * max(0.90, min(0.95, 1 - vol_pct * 0.5)), 2)
     else:
         target = None
         stop_loss = None
@@ -115,9 +152,40 @@ def generate_signal_for_stock(
     if not price:
         return None
 
+    # 获取最新技术指标（用于波动率自适应目标价/止损价）
+    tech = (
+        db.query(TechnicalIndicator)
+        .filter(TechnicalIndicator.stock_id == stock_id)
+        .order_by(TechnicalIndicator.trade_date.desc())
+        .first()
+    )
+
     signal_type, strength, logic = determine_signal_type(score)
-    position = calculate_position(signal_type, strength)
-    entry, target, stop_loss = calculate_prices(price, signal_type)
+
+    # 计算持仓集中度（用于仓位限制）
+    stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    existing_sector_pct = 0.0
+    total_position_pct = 0.0
+    if stock and stock.industry:
+        # 同行业已有的活跃信号数量 / 总活跃信号数量
+        active_signals = db.query(TradeSignal).filter(
+            TradeSignal.signal_date == signal_date,
+            TradeSignal.status == "ACTIVE",
+            TradeSignal.signal_type.in_(["BUY", "ADD"]),
+        ).count()
+        if active_signals > 0:
+            # 同行业信号数（简化：用信号数近似仓位占比）
+            sector_signal_count = db.query(TradeSignal).join(Stock).filter(
+                TradeSignal.signal_date == signal_date,
+                TradeSignal.status == "ACTIVE",
+                TradeSignal.signal_type.in_(["BUY", "ADD"]),
+                Stock.industry == stock.industry,
+            ).count()
+            existing_sector_pct = sector_signal_count / (active_signals + 5)  # +5 避免除零
+            total_position_pct = min(0.9, active_signals * 0.06)  # 每只约 6% 仓位
+
+    position = calculate_position(signal_type, strength, existing_sector_pct, total_position_pct)
+    entry, target, stop_loss = calculate_prices(price, signal_type, tech)
 
     # 持有期建议
     holding_map = {

@@ -13,6 +13,23 @@ from app.models.stock import Stock
 COMMISSION_RATE = 0.00025  # 佣金费率 0.025%
 STAMP_DUTY_RATE = 0.0005   # 印花税费率 0.05%（仅卖出）
 MIN_COMMISSION = 5.0        # 最低佣金 5 元
+TRANSFER_FEE_RATE = 0.00001  # 过户费率 0.001%（沪市）
+SLIPPAGE_RATE = 0.001       # 滑点 0.1%（买入加价、卖出减价）
+
+
+def _is_limit_locked(current_close: float, prev_close: float, symbol: str = "") -> bool:
+    """
+    判断是否涨跌停（A 股主板 ±10%，创业板/科创板 ±20%）
+    涨跌停时无法成交
+    """
+    if not prev_close or prev_close <= 0:
+        return False
+    change_pct = (current_close - prev_close) / prev_close
+    # 创业板 (300xxx) 和科创板 (688xxx) 涨跌幅限制 ±20%
+    if symbol.startswith(("300", "301", "688")):
+        return abs(change_pct) >= 0.198  # 留 0.2% 容差
+    # 主板 ±10%
+    return abs(change_pct) >= 0.098  # 留 0.2% 容差
 from app.models.daily_price import DailyPrice
 from app.models.stock_score import StockScore
 from app.models.financial_metric import FinancialMetric
@@ -31,7 +48,17 @@ def run_backtest(
     基于真实历史数据运行回测
     策略：按评分选股，定期调仓，用真实价格计算收益
     """
-    stocks = db.query(Stock).filter(Stock.market == market, Stock.status == "ACTIVE").all()
+    # 使用历史状态表消除生存偏差：包含回测期间有数据的所有股票
+    from app.models.stock_status_history import StockStatusHistory
+    # 获取回测期间有行情数据的股票（含已退市）
+    stock_ids_with_prices = db.query(DailyPrice.stock_id).filter(
+        DailyPrice.trade_date >= date.fromisoformat(start_date),
+        DailyPrice.trade_date <= date.fromisoformat(end_date),
+    ).distinct().subquery()
+    stocks = db.query(Stock).filter(
+        Stock.market == market,
+        Stock.id.in_(stock_ids_with_prices),
+    ).all()
     if not stocks:
         return {"error": "未找到该市场的股票"}
 
@@ -159,13 +186,19 @@ def run_backtest(
             to_sell = [sid for sid in positions if sid not in {s[0] for s in target_stocks}]
             for sid in to_sell:
                 if sid in day_prices:
-                    sell_price = day_prices[sid].close
+                    sell_price = day_prices[sid].close * (1 - SLIPPAGE_RATE)  # 卖出滑点减价
+                    # 涨跌停检查：跌停时无法卖出
+                    prev_p = day_prices[sid].pre_close
+                    symbol = stock_map[sid].symbol if sid in stock_map else ""
+                    if prev_p and _is_limit_locked(sell_price, prev_p, symbol) and sell_price < prev_p:
+                        continue  # 跌停，跳过卖出
                     shares = positions[sid]["shares"]
                     proceeds = shares * sell_price
-                    # 计算交易成本
+                    # 计算交易成本（佣金 + 印花税 + 过户费）
                     commission = max(proceeds * COMMISSION_RATE, MIN_COMMISSION)
                     stamp_duty = proceeds * STAMP_DUTY_RATE
-                    total_cost = commission + stamp_duty
+                    transfer_fee = proceeds * TRANSFER_FEE_RATE
+                    total_cost = commission + stamp_duty + transfer_fee
                     net_proceeds = proceeds - total_cost
                     buy_cost = shares * positions[sid]["cost_price"]
                     pnl = net_proceeds - buy_cost
@@ -194,17 +227,23 @@ def run_backtest(
             for sid, sc in target_stocks:
                 if sid not in day_prices:
                     continue
-                price = day_prices[sid].close
+                price = day_prices[sid].close * (1 + SLIPPAGE_RATE)  # 买入滑点加价
+                # 涨跌停检查：涨停时无法买入
+                prev_p = day_prices[sid].pre_close
+                symbol = stock_map[sid].symbol if sid in stock_map else ""
+                if prev_p and _is_limit_locked(price, prev_p, symbol) and price > prev_p:
+                    continue  # 涨停，跳过买入
                 current_value = positions[sid]["shares"] * price if sid in positions else 0
                 diff = target_value_per - current_value
 
-                if diff > price * 10:  # 需要买入
+                if diff > price * 100:  # 至少 1 手（100 股）
                     shares_to_buy = int(diff / price / 100) * 100  # 整手
                     if shares_to_buy > 0:
                         buy_amount = shares_to_buy * price
-                        # 计算交易成本
+                        # 计算交易成本（佣金 + 过户费）
                         commission = max(buy_amount * COMMISSION_RATE, MIN_COMMISSION)
-                        total_needed = buy_amount + commission
+                        transfer_fee = buy_amount * TRANSFER_FEE_RATE
+                        total_needed = buy_amount + commission + transfer_fee
                         if cash >= total_needed:
                             cash -= total_needed
                             if sid in positions:

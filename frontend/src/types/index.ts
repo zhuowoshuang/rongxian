@@ -344,3 +344,159 @@ export interface NotificationConfig {
 export interface ApiMessage {
   message: string;
 }
+
+// ==================== 管理后台 - API 配置 ====================
+
+export interface ApiConfigItem {
+  id: number;
+  provider: string;
+  display_name: string;
+  api_key: string;
+  api_secret: string;
+  base_url: string | null;
+  is_enabled: boolean;
+  daily_limit: number;
+  rate_limit: number;
+  config_json: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface UserQuotaItem {
+  user_id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  is_active: boolean;
+  daily_report_limit: number;
+  daily_backtest_limit: number;
+  daily_search_limit: number;
+  daily_pdf_limit: number;
+  can_download_pdf: boolean;
+  can_use_style_report: boolean;
+  can_use_simulation: boolean;
+  today_calls: number;
+  today_reports: number;
+  today_backtests: number;
+}
+
+export interface ApiLogItem {
+  id: number;
+  user_id: number;
+  username: string;
+  provider: string;
+  endpoint: string;
+  method: string;
+  status_code: number;
+  response_time: number;
+  error_msg: string | null;
+  called_at: string | null;
+}
+
+export interface ApiLogResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: ApiLogItem[];
+}
+
+export interface ApiStatsResponse {
+  today_total: number;
+  today_errors: number;
+  avg_response_time: number;
+  by_provider: Record<string, number>;
+  by_user: Record<string, number>;
+}
+
+export interface AdminStockItem {
+  id: number;
+  symbol: string;
+  name: string;
+  market: string;
+  exchange: string;
+  industry: string | null;
+  sector: string | null;
+  status: string;
+  currency: string;
+  created_at: string | null;
+}
+
+export interface AdminStockResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: AdminStockItem[];
+}
+
+export interface AdminScoreItem {
+  id: number;
+  stock_id: number;
+  symbol: string;
+  name: string;
+  total_score: number;
+  quality_score: number;
+  valuation_score: number;
+  growth_score: number;
+  trend_score: number;
+  risk_score: number;
+  rating: string;
+  reason_summary: string | null;
+  score_date: string;
+}
+
+export interface AdminScoreResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: AdminScoreItem[];
+}
+
+export interface AdminSignalItem {
+  id: number;
+  stock_id: number;
+  symbol: string;
+  name: string;
+  signal_type: string;
+  signal_strength: number;
+  suggested_position: number;
+  entry_price: number | null;
+  target_price: number | null;
+  stop_loss_price: number | null;
+  holding_period: string;
+  status: string;
+  signal_date: string;
+}
+
+export interface AdminSignalResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: AdminSignalItem[];
+}
+
+export interface AdminUserItem {
+  id: number;
+  username: string;
+  display_name: string;
+  email: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface FetchStockResult {
+  symbol: string;
+  steps: string[];
+  status: string;
+  stock_id: number;
+  stock_name: string;
+}
+
+export interface AdminTableDataResponse {
+  columns: string[];
+  total: number;
+  page: number;
+  page_size: number;
+  data: Array<Record<string, unknown>>;
+}

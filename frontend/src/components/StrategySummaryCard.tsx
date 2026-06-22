@@ -12,15 +12,15 @@ interface Props {
 export default function StrategySummaryCard({ summary }: Props) {
   const { t } = useTranslation();
 
-  const statusConfig: Record<string, { color: string; bg: string; icon: React.ReactNode }> = {
-    "偏多": { color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", icon: <TrendingUp className="w-6 h-6" /> },
-    "中性偏多": { color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20", icon: <TrendingUp className="w-6 h-6" /> },
-    "中性": { color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20", icon: <Minus className="w-6 h-6" /> },
-    "中性偏空": { color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20", icon: <TrendingDown className="w-6 h-6" /> },
-    "偏空": { color: "text-red-400", bg: "bg-red-500/10 border-red-500/20", icon: <TrendingDown className="w-6 h-6" /> },
+  const statusConfig: Record<string, { color: string; bg: string; icon: React.ReactNode; labelKey: string }> = {
+    bullish: { color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", icon: <TrendingUp className="w-6 h-6" />, labelKey: "strategy.bullish" },
+    mildly_bullish: { color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20", icon: <TrendingUp className="w-6 h-6" />, labelKey: "strategy.mildlyBullish" },
+    neutral: { color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20", icon: <Minus className="w-6 h-6" />, labelKey: "strategy.neutral" },
+    mildly_bearish: { color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20", icon: <TrendingDown className="w-6 h-6" />, labelKey: "strategy.mildlyBearish" },
+    bearish: { color: "text-red-400", bg: "bg-red-500/10 border-red-500/20", icon: <TrendingDown className="w-6 h-6" />, labelKey: "strategy.bearish" },
   };
 
-  const config = statusConfig[summary.market_status] || statusConfig["中性"];
+  const config = statusConfig[summary.market_status] || statusConfig.neutral;
 
   return (
     <GlassCard title={t("dashboard.strategy")} className="h-full flex flex-col">
@@ -29,7 +29,7 @@ export default function StrategySummaryCard({ summary }: Props) {
           <span className="text-xs text-dark-muted">{t("strategy.marketStatus")}</span>
           <span className={config.color}>{config.icon}</span>
         </div>
-        <p className={`text-2xl font-bold mt-1 ${config.color}`}>{summary.market_status}</p>
+        <p className={`text-2xl font-bold mt-1 ${config.color}`}>{t(config.labelKey)}</p>
       </div>
 
       <div className="mb-5">

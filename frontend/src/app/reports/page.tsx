@@ -10,13 +10,14 @@ import { SkeletonCard } from "@/components/ui/Skeleton";
 import { FileText, Download, Search } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
 import MarkdownRenderer from "@/components/ui/MarkdownRenderer";
+import type { ReportItem, ResearchReportItem, StockSearchResult } from "@/types";
 
 export default function ReportsPage() {
   const { t } = useTranslation();
-  const [reports, setReports] = useState<any[]>([]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportType, setReportType] = useState<string>("");
-  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [selectedReport, setSelectedReport] = useState<(ReportItem & { content_markdown: string }) | null>(null);
   const [generating, setGenerating] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<string>("");
   const [downloadingPdf, setDownloadingPdf] = useState<number | null>(null);
@@ -27,23 +28,23 @@ export default function ReportsPage() {
     { key: "conservative", label: t("style.conservative"), icon: "🏦", desc: t("style.conservative.desc"), color: "from-green-500/20 to-green-600/10 border-green-500/30 text-green-300" },
   ];
 
-  const [researchReports, setResearchReports] = useState<any[]>([]);
+  const [researchReports, setResearchReports] = useState<ResearchReportItem[]>([]);
   const [researchTotal, setResearchTotal] = useState(0);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchPage, setResearchPage] = useState(1);
-  const [researchStock, setResearchStock] = useState<any>(null);
+  const [researchStock, setResearchStock] = useState<StockSearchResult | null>(null);
 
   const [activeTab, setActiveTab] = useState("self");
 
   const [stockKeyword, setStockKeyword] = useState("");
-  const [stockResults, setStockResults] = useState<any[]>([]);
-  const [selectedStock, setSelectedStock] = useState<any>(null);
+  const [stockResults, setStockResults] = useState<StockSearchResult[]>([]);
+  const [selectedStock, setSelectedStock] = useState<StockSearchResult | null>(null);
   const [showStockSearch, setShowStockSearch] = useState(false);
   const [stockSearching, setStockSearching] = useState(false);
   const stockSearchRef = useRef<HTMLDivElement>(null);
 
   const [rStockKeyword, setRStockKeyword] = useState("");
-  const [rStockResults, setRStockResults] = useState<any[]>([]);
+  const [rStockResults, setRStockResults] = useState<StockSearchResult[]>([]);
   const [showRStockSearch, setShowRStockSearch] = useState(false);
   const [rStockSearching, setRStockSearching] = useState(false);
   const rStockSearchRef = useRef<HTMLDivElement>(null);
@@ -84,7 +85,7 @@ export default function ReportsPage() {
     const timer = setTimeout(() => {
       searchStocks(stockKeyword)
         .then((data) => { setStockResults(data || []); setShowStockSearch(true); })
-        .catch((err) => { console.error("Stock search failed:", err); setStockResults([]); })
+        .catch(() => { setStockResults([]); })
         .finally(() => setStockSearching(false));
     }, 300);
     return () => clearTimeout(timer);
@@ -97,7 +98,7 @@ export default function ReportsPage() {
     const timer = setTimeout(() => {
       searchStocks(rStockKeyword)
         .then((data) => { setRStockResults(data || []); setShowRStockSearch(true); })
-        .catch((err) => { console.error("Research stock search failed:", err); setRStockResults([]); })
+        .catch(() => { setRStockResults([]); })
         .finally(() => setRStockSearching(false));
     }, 300);
     return () => clearTimeout(timer);
@@ -111,7 +112,6 @@ export default function ReportsPage() {
       showToast("success", t("reports.generateSuccess"));
       fetchReports();
     } catch (e: any) {
-      console.error(e);
       showToast("error", e.message || t("reports.generateError"));
     }
     setGenerating(false);
@@ -124,7 +124,6 @@ export default function ReportsPage() {
       showToast("success", t("reports.styleGenerateSuccess"));
       fetchReports();
     } catch (e: any) {
-      console.error(e);
       showToast("error", e.message || t("reports.styleGenerateError"));
     }
     setGenerating(false);
@@ -136,7 +135,6 @@ export default function ReportsPage() {
       await downloadReportPdf(id, `${title}.pdf`);
       showToast("success", t("reports.pdfStarted"));
     } catch (e: any) {
-      console.error(e);
       showToast("error", e.message || t("reports.pdfError"));
     }
     setDownloadingPdf(null);

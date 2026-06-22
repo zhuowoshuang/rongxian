@@ -61,7 +61,7 @@ def update_notification_config(config: NotificationConfig, db: Session = Depends
         "feishu_enabled": ("启用飞书推送", "false"),
     }
 
-    for key, value in config.dict(exclude_none=True).items():
+    for key, value in config.model_dump(exclude_none=True).items():
         if key == "email_password" and value == "***":
             continue
         existing = db.query(Setting).filter(Setting.key == key).first()

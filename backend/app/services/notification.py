@@ -4,10 +4,12 @@
 """
 import smtplib
 import json
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import date
 from typing import Optional
+from html import escape as html_escape
 import logging
 import httpx
 
@@ -22,46 +24,54 @@ class NotificationService:
 
     # ==================== QQ 邮箱 ====================
 
-    def send_email(self, to_email: str, subject: str, html_content: str) -> bool:
-        """通过 QQ 邮箱发送邮件"""
+    def send_email(self, to_email: str, subject: str, html_content: str, max_retries: int = 2) -> bool:
+        """通过 QQ 邮箱发送邮件（含重试）"""
         smtp_host = self.config.get("email_smtp_host", "smtp.qq.com")
         smtp_port = int(self.config.get("email_smtp_port", 465))
         sender = self.config.get("email_sender", "")
-        password = self.config.get("email_password", "")  # QQ 邮箱授权码
+        password = self.config.get("email_password", "")
 
         if not sender or not password:
             logger.warning("Email not configured: missing sender or password")
             return False
 
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = f"融衔 <{sender}>"
-            msg["To"] = to_email
+        for attempt in range(max_retries + 1):
+            try:
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = f"融衔 <{sender}>"
+                msg["To"] = to_email
 
-            html_part = MIMEText(html_content, "html", "utf-8")
-            msg.attach(html_part)
+                html_part = MIMEText(html_content, "html", "utf-8")
+                msg.attach(html_part)
 
-            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
-                server.login(sender, password)
-                server.sendmail(sender, [to_email], msg.as_string())
+                with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+                    server.login(sender, password)
+                    server.sendmail(sender, [to_email], msg.as_string())
 
-            logger.info(f"Email sent to {to_email}: {subject}")
-            return True
-        except Exception as e:
-            logger.error(f"Email send failed: {e}")
-            return False
+                logger.info(f"Email sent to {to_email}: {subject}")
+                return True
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(f"Email send attempt {attempt + 1} failed, retrying: {e}")
+                    time.sleep(2 ** attempt)
+                else:
+                    logger.error(f"Email send failed after {max_retries + 1} attempts: {e}")
+                    return False
 
     def build_daily_email(self, market_status: str, signals: list, indices: list) -> str:
         """构建每日信号邮件 HTML"""
         signal_rows = ""
         for s in signals[:10]:
             color = "#16a34a" if s["type"] == "BUY" else "#2563eb" if s["type"] == "ADD" else "#d97706" if s["type"] == "REDUCE" else "#dc2626"
+            sym = html_escape(str(s['symbol']))
+            name = html_escape(str(s['name']))
+            sig_type = html_escape(str(s['type']))
             signal_rows += f"""
             <tr>
-                <td style="padding:8px;border-bottom:1px solid #f0f0f0">{s['symbol']}</td>
-                <td style="padding:8px;border-bottom:1px solid #f0f0f0">{s['name']}</td>
-                <td style="padding:8px;border-bottom:1px solid #f0f0f0;color:{color};font-weight:bold">{s['type']}</td>
+                <td style="padding:8px;border-bottom:1px solid #f0f0f0">{sym}</td>
+                <td style="padding:8px;border-bottom:1px solid #f0f0f0">{name}</td>
+                <td style="padding:8px;border-bottom:1px solid #f0f0f0;color:{color};font-weight:bold">{sig_type}</td>
                 <td style="padding:8px;border-bottom:1px solid #f0f0f0">{s['score']}</td>
                 <td style="padding:8px;border-bottom:1px solid #f0f0f0">{s['position']}%</td>
             </tr>"""
@@ -139,23 +149,28 @@ class NotificationService:
             },
         }
 
-        try:
-            with httpx.Client(timeout=10, trust_env=False) as client:
-                resp = client.post(
-                    webhook_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                )
-                data = resp.json()
-                if data.get("code") == 0 or data.get("StatusCode") == 0:
-                    logger.info(f"Feishu message sent: {title}")
-                    return True
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=10, trust_env=False) as client:
+                    resp = client.post(
+                        webhook_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    data = resp.json()
+                    if data.get("code") == 0 or data.get("StatusCode") == 0:
+                        logger.info(f"Feishu message sent: {title}")
+                        return True
+                    else:
+                        logger.error(f"Feishu API error: {data}")
+                        return False
+            except Exception as e:
+                if attempt < 2:
+                    logger.warning(f"Feishu send attempt {attempt + 1} failed, retrying: {e}")
+                    time.sleep(2 ** attempt)
                 else:
-                    logger.error(f"Feishu API error: {data}")
+                    logger.error(f"Feishu send failed after 3 attempts: {e}")
                     return False
-        except Exception as e:
-            logger.error(f"Feishu send failed: {e}")
-            return False
 
     def build_daily_feishu(self, market_status: str, signals: list, indices: list) -> str:
         """构建飞书每日消息 Markdown"""

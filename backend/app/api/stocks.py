@@ -28,8 +28,10 @@ def search_stocks(
     query = db.query(Stock).filter(Stock.status == "ACTIVE")
     if market:
         query = query.filter(Stock.market == market)
+    # 转义 LIKE 特殊字符（%、_）防止模式操纵
+    escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     query = query.filter(
-        (Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%"))
+        (Stock.symbol.like(f"%{escaped}%", escape="\\")) | (Stock.name.like(f"%{escaped}%", escape="\\"))
     )
     stocks = query.limit(20).all()
     return [
@@ -147,7 +149,7 @@ def add_stock_and_fetch(
                 try:
                     quote = provider.fetch_realtime_quote(symbol)
                     # 名称可能在其他地方获取
-                except:
+                except Exception:
                     pass
 
             results["steps"].append(f"行情数据: {price_count}条")

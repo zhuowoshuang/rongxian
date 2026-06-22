@@ -127,8 +127,9 @@ def list_tables(admin: User = Depends(get_current_admin), db: Session = Depends(
 def get_table_data(table_name: str, page: int = 1, page_size: int = 50, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """查看指定表的数据（分页）"""
     inspector = inspect(db.bind)
-    tables = inspector.get_table_names()
-    if table_name not in tables:
+    # 先验证表名是否存在于数据库中（白名单校验，防止 SQL 注入）
+    allowed_tables = set(inspector.get_table_names())
+    if table_name not in allowed_tables:
         raise HTTPException(status_code=404, detail=f"表 {table_name} 不存在")
 
     # Get columns
@@ -137,7 +138,7 @@ def get_table_data(table_name: str, page: int = 1, page_size: int = 50, admin: U
     # 敏感字段列表：读取时脱敏
     SENSITIVE_FIELDS = {"password_hash", "api_key", "api_secret", "api_password", "token", "secret"}
 
-    # Get total count（转义表名中的双引号防止注入）
+    # 使用 SQLAlchemy 的 quoted_name 安全引用标识符（转义表名中的双引号防止注入）
     safe_name = table_name.replace('"', '""')
     total = db.execute(text(f'SELECT COUNT(*) FROM "{safe_name}"')).scalar()
 
@@ -554,7 +555,8 @@ def admin_list_stocks(
     from app.models.stock import Stock
     query = db.query(Stock)
     if keyword:
-        query = query.filter((Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%")))
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter((Stock.symbol.like(f"%{escaped}%", escape="\\")) | (Stock.name.like(f"%{escaped}%", escape="\\")))
     if market:
         query = query.filter(Stock.market == market)
     if status:
@@ -668,7 +670,8 @@ def admin_list_scores(
     from app.models.stock import Stock
     query = db.query(StockScore, Stock).join(Stock, StockScore.stock_id == Stock.id)
     if keyword:
-        query = query.filter((Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%")))
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter((Stock.symbol.like(f"%{escaped}%", escape="\\")) | (Stock.name.like(f"%{escaped}%", escape="\\")))
     if rating:
         query = query.filter(StockScore.rating == rating)
     total = query.count()
@@ -745,7 +748,8 @@ def admin_list_signals(
     from app.models.stock import Stock
     query = db.query(TradeSignal, Stock).join(Stock, TradeSignal.stock_id == Stock.id)
     if keyword:
-        query = query.filter((Stock.symbol.like(f"%{keyword}%")) | (Stock.name.like(f"%{keyword}%")))
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter((Stock.symbol.like(f"%{escaped}%", escape="\\")) | (Stock.name.like(f"%{escaped}%", escape="\\")))
     if signal_type:
         query = query.filter(TradeSignal.signal_type == signal_type)
     if status:

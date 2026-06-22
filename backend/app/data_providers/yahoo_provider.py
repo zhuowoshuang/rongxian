@@ -10,11 +10,18 @@ from datetime import date, timedelta
 from typing import Optional
 import pandas as pd
 
-# 清除代理环境变量，避免 yfinance 走系统代理
-for _var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
-    os.environ.pop(_var, None)
+# 保存并临时清除代理环境变量（仅影响 yfinance 导入阶段）
+_PROXY_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy")
+_saved_proxy = {}
+for _var in _PROXY_VARS:
+    _saved_proxy[_var] = os.environ.pop(_var, None)
 
 import yfinance as yf
+
+# 恢复代理环境变量
+for _var, _val in _saved_proxy.items():
+    if _val is not None:
+        os.environ[_var] = _val
 
 from app.data_providers.base import DataProviderBase
 
@@ -67,13 +74,19 @@ class YahooFinanceProvider(DataProviderBase):
             trade_date = idx
             if hasattr(trade_date, "date"):
                 trade_date = trade_date.date()
+            # 使用 None 替代 0 表示缺失值，防止下游误将 0 当作真实价格
+            open_val = row.get("Open")
+            high_val = row.get("High")
+            low_val = row.get("Low")
+            close_val = row.get("Close")
+            vol_val = row.get("Volume")
             rows.append({
                 "trade_date": trade_date,
-                "open": float(row.get("Open", 0) or 0),
-                "high": float(row.get("High", 0) or 0),
-                "low": float(row.get("Low", 0) or 0),
-                "close": float(row.get("Close", 0) or 0),
-                "volume": float(row.get("Volume", 0) or 0),
+                "open": float(open_val) if pd.notna(open_val) and open_val else None,
+                "high": float(high_val) if pd.notna(high_val) and high_val else None,
+                "low": float(low_val) if pd.notna(low_val) and low_val else None,
+                "close": float(close_val) if pd.notna(close_val) and close_val else None,
+                "volume": float(vol_val) if pd.notna(vol_val) and vol_val else 0,
                 "turnover": 0,
                 "turnover_rate": 0,
                 "pre_close": None,
@@ -82,7 +95,8 @@ class YahooFinanceProvider(DataProviderBase):
                 "pb": None,
                 "dividend_yield": None,
             })
-        return pd.DataFrame(rows)
+        # 过滤掉关键字段为 None 的行
+        return pd.DataFrame([r for r in rows if r["close"] is not None])
 
     def fetch_financial_metrics(self, symbol: str) -> pd.DataFrame:
         yahoo_sym = _to_yahoo_symbol(symbol)

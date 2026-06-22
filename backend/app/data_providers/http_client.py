@@ -37,14 +37,17 @@ def _is_cn_url(url: str) -> bool:
 
 
 def _make_session(trust_env: bool) -> requests.Session:
-    """创建 Session"""
+    """创建 Session（含连接错误重试）"""
     session = requests.Session()
     session.trust_env = trust_env
     retries = Retry(
         total=3,
         backoff_factor=0.5,
         status_forcelist=[500, 502, 503, 504],
-        allowed_methods=["GET"],
+        allowed_methods=["GET", "POST"],
+        raise_on_status=False,       # 不在状态码层面抛异常，由调用方处理
+        connect=3,                   # 连接错误也重试
+        read=3,                      # 读取超时也重试
     )
     adapter = HTTPAdapter(
         max_retries=retries,

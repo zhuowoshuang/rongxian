@@ -1,11 +1,16 @@
 """
 AI 分析服务 — 基于 DeepSeek 大模型生成投资洞察
+使用线程池执行同步 HTTP 调用，避免阻塞 FastAPI 事件循环
 """
 import json
 import logging
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+
+# 单线程池，限制并发 AI 调用数
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ai-service")
 
 logger = logging.getLogger(__name__)
 

@@ -25,13 +25,22 @@ from app.models.stock_score import StockScore
 
 def _compute_industry_stats(db: Session, stock_ids: list[int]) -> dict:
     """
-    计算每个行业的估值指标分位数，用于行业内相对排名
-    返回: {industry: {pe_q20, pe_q50, pe_q80, pb_q20, pb_q50, pb_q80, div_q50, vol_q50}}
+    计算每个行业的估值/质量指标分位数，用于行业内相对排名
+    返回: {industry: {pe_q20/q50/q80, pb_q20/q50/q80, roe_q20/q50/q80, gm_q20/q50/q80,
+           dr_q20/q50/q80, div_q20/q50/q80, vol_q20/q50/q80, count}}
     """
     if not stock_ids:
         return {}
 
-    # 获取每只股票的最新价格
+    from datetime import timedelta
+    import math
+    from collections import defaultdict
+
+    # 批量加载所有 Stock 到 dict（消除 N+1）
+    all_stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all()
+    stock_map = {s.id: s for s in all_stocks}
+
+    # 获取每只股票的最新价格（子查询 + join，一次查询）
     latest_price_subq = db.query(
         DailyPrice.stock_id,
         func.max(DailyPrice.trade_date).label("max_date")
@@ -43,15 +52,15 @@ def _compute_industry_stats(db: Session, stock_ids: list[int]) -> dict:
         (DailyPrice.trade_date == latest_price_subq.c.max_date)
     ).all()
 
-    # 按行业分组
+    # 按行业分组价格数据
     industry_data: dict[str, dict] = {}
     for p in latest_prices:
-        stock = db.query(Stock).filter(Stock.id == p.stock_id).first()
+        stock = stock_map.get(p.stock_id)
         if not stock or not stock.industry:
             continue
         ind = stock.industry
         if ind not in industry_data:
-            industry_data[ind] = {"pe": [], "pb": [], "div": [], "vol": []}
+            industry_data[ind] = {"pe": [], "pb": [], "div": [], "vol": [], "roe": [], "gm": [], "dr": []}
         if p.pe is not None and 0 < p.pe < 500:
             industry_data[ind]["pe"].append(p.pe)
         if p.pb is not None and 0 < p.pb < 100:
@@ -59,9 +68,33 @@ def _compute_industry_stats(db: Session, stock_ids: list[int]) -> dict:
         if p.dividend_yield is not None:
             industry_data[ind]["div"].append(p.dividend_yield)
 
+    # 批量获取每只股票最新财务数据（消除 N+1）
+    latest_fin_subq = db.query(
+        FinancialMetric.stock_id,
+        func.max(FinancialMetric.report_period).label("max_period")
+    ).filter(FinancialMetric.stock_id.in_(stock_ids)).group_by(FinancialMetric.stock_id).subquery()
+
+    latest_financials = db.query(FinancialMetric).join(
+        latest_fin_subq,
+        (FinancialMetric.stock_id == latest_fin_subq.c.stock_id) &
+        (FinancialMetric.report_period == latest_fin_subq.c.max_period)
+    ).all()
+
+    for f in latest_financials:
+        stock = stock_map.get(f.stock_id)
+        if not stock or not stock.industry:
+            continue
+        ind = stock.industry
+        if ind not in industry_data:
+            industry_data[ind] = {"pe": [], "pb": [], "div": [], "vol": [], "roe": [], "gm": [], "dr": []}
+        if f.roe is not None:
+            industry_data[ind]["roe"].append(f.roe)
+        if f.gross_margin is not None:
+            industry_data[ind]["gm"].append(f.gross_margin)
+        if f.debt_ratio is not None:
+            industry_data[ind]["dr"].append(f.debt_ratio)
+
     # 计算每只股票的 60 日波动率并按行业分组
-    from datetime import timedelta
-    import math
     latest_date = db.query(func.max(DailyPrice.trade_date)).scalar()
     if latest_date:
         vol_start = latest_date - timedelta(days=90)
@@ -71,7 +104,6 @@ def _compute_industry_stats(db: Session, stock_ids: list[int]) -> dict:
             DailyPrice.trade_date <= latest_date,
         ).order_by(DailyPrice.stock_id, DailyPrice.trade_date).all()
 
-        from collections import defaultdict
         prices_by_stock = defaultdict(list)
         for p in vol_prices:
             prices_by_stock[p.stock_id].append(p.close)
@@ -79,40 +111,40 @@ def _compute_industry_stats(db: Session, stock_ids: list[int]) -> dict:
         for sid, closes in prices_by_stock.items():
             if len(closes) < 20:
                 continue
-            stock = db.query(Stock).filter(Stock.id == sid).first()
+            stock = stock_map.get(sid)
             if not stock or not stock.industry:
                 continue
-            # 计算日收益率标准差，年化
             daily_returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes)) if closes[i-1] > 0]
             if len(daily_returns) >= 10:
                 mean_ret = sum(daily_returns) / len(daily_returns)
                 var = sum((r - mean_ret) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
-                annual_vol = math.sqrt(var) * math.sqrt(252) * 100  # 百分比
+                annual_vol = math.sqrt(var) * math.sqrt(252) * 100
                 ind = stock.industry
                 if ind not in industry_data:
-                    industry_data[ind] = {"pe": [], "pb": [], "div": [], "vol": []}
+                    industry_data[ind] = {"pe": [], "pb": [], "div": [], "vol": [], "roe": [], "gm": [], "dr": []}
                 industry_data[ind]["vol"].append(annual_vol)
 
-    # 计算分位数
+    # 计算分位数（标准公式：idx = (n-1) * pct/100）
     def percentile(data, pct):
-        if not data:
+        if not data or len(data) < 2:
             return None
         sorted_data = sorted(data)
-        idx = int(len(sorted_data) * pct / 100)
-        idx = min(idx, len(sorted_data) - 1)
-        return sorted_data[idx]
+        idx = (len(sorted_data) - 1) * pct / 100
+        lower = int(idx)
+        upper = min(lower + 1, len(sorted_data) - 1)
+        frac = idx - lower
+        return sorted_data[lower] * (1 - frac) + sorted_data[upper] * frac
 
     stats = {}
     for ind, data in industry_data.items():
         stats[ind] = {
-            "pe_q20": percentile(data["pe"], 20),
-            "pe_q50": percentile(data["pe"], 50),
-            "pe_q80": percentile(data["pe"], 80),
-            "pb_q20": percentile(data["pb"], 20),
-            "pb_q50": percentile(data["pb"], 50),
-            "pb_q80": percentile(data["pb"], 80),
-            "div_q50": percentile(data["div"], 50),
-            "vol_q50": percentile(data["vol"], 50),
+            "pe_q20": percentile(data["pe"], 20), "pe_q50": percentile(data["pe"], 50), "pe_q80": percentile(data["pe"], 80),
+            "pb_q20": percentile(data["pb"], 20), "pb_q50": percentile(data["pb"], 50), "pb_q80": percentile(data["pb"], 80),
+            "roe_q20": percentile(data["roe"], 20), "roe_q50": percentile(data["roe"], 50), "roe_q80": percentile(data["roe"], 80),
+            "gm_q20": percentile(data["gm"], 20), "gm_q50": percentile(data["gm"], 50), "gm_q80": percentile(data["gm"], 80),
+            "dr_q20": percentile(data["dr"], 20), "dr_q50": percentile(data["dr"], 50), "dr_q80": percentile(data["dr"], 80),
+            "div_q20": percentile(data["div"], 20), "div_q50": percentile(data["div"], 50), "div_q80": percentile(data["div"], 80),
+            "vol_q20": percentile(data["vol"], 20), "vol_q50": percentile(data["vol"], 50), "vol_q80": percentile(data["vol"], 80),
             "count": len(data["pe"]),
         }
     return stats
@@ -599,20 +631,21 @@ def score_stock(
     if not stock:
         return None
 
-    # 获取最新行情
+    # 获取 score_date 当日或之前的最新行情（防止前视偏差）
     price = (
         db.query(DailyPrice)
-        .filter(DailyPrice.stock_id == stock_id)
+        .filter(DailyPrice.stock_id == stock_id, DailyPrice.trade_date <= score_date)
         .order_by(DailyPrice.trade_date.desc())
         .first()
     )
     if not price:
         return None
 
-    # 获取最新财务数据
+    # 获取 score_date 之前的最新财务数据（防止前视偏差）
+    # 财务报告有滞后性：Q1 报告 4 月底出，Q2 报告 8 月底出，Q3 报告 10 月底出，年报 4 月底出
     financial = (
         db.query(FinancialMetric)
-        .filter(FinancialMetric.stock_id == stock_id)
+        .filter(FinancialMetric.stock_id == stock_id, FinancialMetric.report_period <= score_date)
         .order_by(FinancialMetric.report_period.desc())
         .first()
     )
@@ -627,10 +660,10 @@ def score_stock(
         .first()
     )
 
-    # 获取最新技术指标
+    # 获取 score_date 当日或之前的最新技术指标
     tech = (
         db.query(TechnicalIndicator)
-        .filter(TechnicalIndicator.stock_id == stock_id)
+        .filter(TechnicalIndicator.stock_id == stock_id, TechnicalIndicator.trade_date <= score_date)
         .order_by(TechnicalIndicator.trade_date.desc())
         .first()
     )
@@ -689,15 +722,14 @@ def score_stock(
         )
         db.add(score)
 
-    db.commit()
-    db.refresh(score)
+    db.flush()
     return score
 
 
 # ==================== 批量评分 ====================
 
 def score_all_stocks(db: Session, score_date: date) -> list[StockScore]:
-    """对所有活跃股票进行评分（批量提交）"""
+    """对所有活跃股票进行评分（批量提交，每 100 只 flush 一次）"""
     stocks = db.query(Stock).filter(Stock.status == "ACTIVE").all()
     if not stocks:
         return []
@@ -708,8 +740,12 @@ def score_all_stocks(db: Session, score_date: date) -> list[StockScore]:
     industry_stats = _compute_industry_stats(db, stock_ids)
 
     results = []
-    for stock in stocks:
+    for i, stock in enumerate(stocks):
         s = score_stock(db, stock.id, score_date, industry_stats)
         if s:
             results.append(s)
+        # 每 100 只 flush 一次，最后统一 commit
+        if (i + 1) % 100 == 0:
+            db.flush()
+    db.commit()
     return results

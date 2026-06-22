@@ -34,7 +34,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/stock_agent
       REDIS_URL: redis://redis:6379/0
       MOCK_DATA: "true"
-      JWT_SECRET_KEY: stock-agent-docker-secret-key
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-please-change-this-in-production}
       PYTHONUNBUFFERED: "1"
     depends_on:
       db:
