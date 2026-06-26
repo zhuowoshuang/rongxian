@@ -235,6 +235,7 @@ export interface SimulateHolding {
   symbol: string;
   buy_date: string;
   shares: number;
+  sell_date?: string;  // 可选卖出日期，不填则持有至今
 }
 
 export interface SimulateResult {

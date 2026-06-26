@@ -1,6 +1,6 @@
 const zh: Record<string, string> = {
   // App
-  "app.name": "融衔",
+  "app.name": "清数智算",
   "app.subtitle": "A股港股智能分析",
   "app.description": "A股港股智能分析系统",
   "app.disclaimer": "本系统仅用于研究和辅助分析，不构成任何投资建议。",
@@ -468,6 +468,9 @@ const zh: Record<string, string> = {
   "strategy.neutral": "中性",
   "strategy.mildlyBearish": "中性偏空",
   "strategy.bearish": "偏空",
+  "pools.searchForMore": "搜索更多标的",
+  "stock.signalEmptyHint": "该股票暂无交易信号，可能尚未完成评分",
+  "stock.reportEmptyHint": "暂无相关研报",
   // Pagination
   "admin.prevPage": "上一页",
   "admin.nextPage": "下一页",

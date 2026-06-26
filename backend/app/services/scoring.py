@@ -154,9 +154,12 @@ def _industry_rank_score(value: float, q_low: float, q_mid: float, q_high: float
     """
     根据行业内分位数排名计算得分
     lower_is_better: True 表示值越低越好（如 PE），False 表示值越高越好（如股息率）
+    返回 None 表示行业数据不足，调用方应使用绝对阈值兜底
     """
-    if value is None or q_low is None:
+    if value is None:
         return 0, "无数据"
+    if q_low is None or q_mid is None or q_high is None:
+        return None, "行业数据不足"
 
     if lower_is_better:
         if value <= q_low:
@@ -570,26 +573,19 @@ def calculate_risk_score(financial: FinancialMetric, price: DailyPrice, tech: Op
         else:
             details.append({"item": "负债/现金流", "value": "负债过高或现金流恶化", "score": 0, "max": 3, "status": "风险"})
 
-    # 波动率风险（行业内排名，低波动 = 高分）
+    # 波动率风险（布林带宽度，低波动 = 高分）
+    # 注意：行业百分位来自年化波动率，与布林带宽度不可比，因此只用绝对阈值
     if tech and tech.ma20 is not None and price.close is not None and price.close > 0:
-        # 用 Bollinger 带宽近似波动率
         if tech.boll_upper is not None and tech.boll_lower is not None and tech.ma20 > 0:
             bandwidth = (tech.boll_upper - tech.boll_lower) / tech.ma20 * 100
-            if ind and ind.get("vol_q50") is not None:
-                # 用行业内波动率中位数作为参考
-                vol_q20 = ind.get("vol_q20", 15)
-                vol_q50 = ind["vol_q50"]
-                vol_q80 = ind.get("vol_q80", 40)
-                s, status = _industry_rank_score(bandwidth, vol_q20, vol_q50, vol_q80, 4, lower_is_better=True)
+            if bandwidth < 5:
+                s, status = 4, "低波动"
+            elif bandwidth < 10:
+                s, status = 3, "中等波动"
+            elif bandwidth < 15:
+                s, status = 1, "较高波动"
             else:
-                if bandwidth < 5:
-                    s, status = 4, "低波动"
-                elif bandwidth < 10:
-                    s, status = 3, "中等波动"
-                elif bandwidth < 15:
-                    s, status = 1, "较高波动"
-                else:
-                    s, status = 0, "高波动"
+                s, status = 0, "高波动"
             score += s
             details.append({"item": "波动率", "value": f"带宽{bandwidth:.1f}%", "score": s, "max": 4, "status": status})
         else:

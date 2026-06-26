@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 4101",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -11,13 +11,12 @@
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.8",
     "clsx": "^2.1.1",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.441.0",
     "next": "14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
     "recharts": "^2.12.7",
-    "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.5.2"
   },
   "devDependencies": {

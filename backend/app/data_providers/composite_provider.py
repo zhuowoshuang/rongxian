@@ -11,8 +11,21 @@ import logging
 import pandas as pd
 
 from app.data_providers.base import DataProviderBase
-from app.data_providers.yahoo_provider import YahooFinanceProvider
 from app.data_providers.eastmoney_provider import EastMoneyProvider
+
+# YahooFinanceProvider 延迟导入，避免 yfinance 的循环导入问题
+_YahooFinanceProvider = None
+
+def _get_yahoo_provider():
+    global _YahooFinanceProvider
+    if _YahooFinanceProvider is None:
+        try:
+            from app.data_providers.yahoo_provider import YahooFinanceProvider
+            _YahooFinanceProvider = YahooFinanceProvider
+        except ImportError as e:
+            logger.warning(f"YahooFinanceProvider 不可用: {e}")
+            return None
+    return _YahooFinanceProvider
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +34,18 @@ class CompositeProvider(DataProviderBase):
     """组合数据源 - 自动选择最优数据源"""
 
     def __init__(self):
-        self.yahoo = YahooFinanceProvider()
+        self._yahoo = None  # 延迟加载
         self.eastmoney = EastMoneyProvider()
         self._xueqiu = None
+
+    @property
+    def yahoo(self):
+        """延迟加载 Yahoo 提供者"""
+        if self._yahoo is None:
+            yahoo_cls = _get_yahoo_provider()
+            if yahoo_cls:
+                self._yahoo = yahoo_cls()
+        return self._yahoo
 
     @property
     def xueqiu(self):
@@ -77,7 +99,9 @@ class CompositeProvider(DataProviderBase):
                     return news
             except Exception:
                 pass
-        return self.yahoo.fetch_news(symbol, limit)
+        if self.yahoo:
+            return self.yahoo.fetch_news(symbol, limit)
+        return []
 
     def fetch_valuation(self, symbol: str) -> dict:
         """估值: 雪球 -> Yahoo -> 东方财富"""
@@ -89,7 +113,12 @@ class CompositeProvider(DataProviderBase):
             except Exception as e:
                 logger.debug(f"雪球估值失败 {symbol}: {e}")
 
-        val = self.yahoo.fetch_valuation(symbol)
+        val = None
+        if self.yahoo:
+            try:
+                val = self.yahoo.fetch_valuation(symbol)
+            except Exception:
+                pass
         if not val:
             val = self.eastmoney.fetch_valuation(symbol)
         return val

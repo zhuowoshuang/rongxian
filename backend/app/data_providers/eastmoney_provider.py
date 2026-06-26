@@ -38,71 +38,89 @@ class EastMoneyProvider(DataProviderBase):
             return self._fetch_hk_list()
 
     def _fetch_a_share_list(self) -> pd.DataFrame:
-        """获取全部 A 股列表（分页）"""
+        """获取全部 A 股列表（分页，每页 100 条）"""
         url = "https://82.push2.eastmoney.com/api/qt/clist/get"
         all_rows = []
         page = 1
-        while True:
-            params = urlencode({
-                "pn": page, "pz": 5000, "po": 1, "np": 1,
-                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                "fltt": 2, "invt": 2, "fid": "f12",
-                "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
-                "fields": "f12,f14,f2,f3,f9,f23,f115,f116,f117",
-            })
-            data = _curl_get(f"{url}?{params}")
-            items = data.get("data", {}).get("diff", [])
-            if not items:
-                break
-            for item in items:
-                code = item.get("f12", "")
-                name = item.get("f14", "")
-                if not code or not name:
-                    continue
-                exchange = "SH" if code.startswith(("6", "5")) else "SZ"
-                all_rows.append({
-                    "symbol": code, "name": name, "market": "A_SHARE",
-                    "exchange": exchange, "industry": "", "sector": "",
+        max_pages = 60  # 最多 60 页 = 6000 只股票
+        try:
+            while page <= max_pages:
+                params = urlencode({
+                    "pn": page, "pz": 100, "po": 1, "np": 1,
+                    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                    "fltt": 2, "invt": 2, "fid": "f12",
+                    "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
+                    "fields": "f12,f14,f2,f3,f9,f23,f100,f115,f116,f117",
                 })
-            if len(items) < 5000:
-                break
-            page += 1
-            import time
-            time.sleep(0.2)
+                data = _curl_get(f"{url}?{params}")
+                items = data.get("data", {}).get("diff", [])
+                if not items:
+                    if page == 1:
+                        logger.warning("东方财富 A 股列表 API 返回空数据，可能接口已变更")
+                    break
+                for item in items:
+                    code = item.get("f12", "")
+                    name = item.get("f14", "")
+                    if not code or not name:
+                        continue
+                    exchange = "SH" if code.startswith(("6", "5")) else "SZ"
+                    industry = item.get("f100", "") or ""
+                    all_rows.append({
+                        "symbol": code, "name": name, "market": "A_SHARE",
+                        "exchange": exchange, "industry": industry, "sector": "",
+                    })
+                if len(items) < 100:
+                    break
+                page += 1
+                import time
+                time.sleep(0.15)
+        except Exception as e:
+            logger.error(f"东方财富 A 股列表获取失败（第 {page} 页）: {e}")
+            if not all_rows:
+                raise
         logger.info(f"A 股列表获取完成: {len(all_rows)} 只")
         return pd.DataFrame(all_rows)
 
     def _fetch_hk_list(self) -> pd.DataFrame:
-        """获取全部港股列表（分页）"""
+        """获取全部港股列表（分页，每页 100 条）"""
         url = "https://82.push2.eastmoney.com/api/qt/clist/get"
         all_rows = []
         page = 1
-        while True:
-            params = urlencode({
-                "pn": page, "pz": 5000, "po": 1, "np": 1,
-                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                "fltt": 2, "invt": 2, "fid": "f12",
-                "fs": "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2",
-                "fields": "f12,f14,f2,f3",
-            })
-            data = _curl_get(f"{url}?{params}")
-            items = data.get("data", {}).get("diff", [])
-            if not items:
-                break
-            for item in items:
-                code = item.get("f12", "")
-                name = item.get("f14", "")
-                if not code or not name:
-                    continue
-                all_rows.append({
-                    "symbol": code, "name": name, "market": "HK",
-                    "exchange": "HK", "industry": "", "sector": "",
+        max_pages = 30  # 最多 30 页 = 3000 只港股
+        try:
+            while page <= max_pages:
+                params = urlencode({
+                    "pn": page, "pz": 100, "po": 1, "np": 1,
+                    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                    "fltt": 2, "invt": 2, "fid": "f12",
+                    "fs": "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2",
+                    "fields": "f12,f14,f2,f3,f100",
                 })
-            if len(items) < 5000:
-                break
-            page += 1
-            import time
-            time.sleep(0.2)
+                data = _curl_get(f"{url}?{params}")
+                items = data.get("data", {}).get("diff", [])
+                if not items:
+                    if page == 1:
+                        logger.warning("东方财富港股列表 API 返回空数据，可能接口已变更")
+                    break
+                for item in items:
+                    code = item.get("f12", "")
+                    name = item.get("f14", "")
+                    if not code or not name:
+                        continue
+                    industry = item.get("f100", "") or ""
+                    all_rows.append({
+                        "symbol": code, "name": name, "market": "HK",
+                        "exchange": "HK", "industry": industry, "sector": "",
+                    })
+                if len(items) < 100:
+                    break
+                page += 1
+                import time
+                time.sleep(0.15)
+        except Exception as e:
+            logger.error(f"东方财富港股列表获取失败（第 {page} 页）: {e}")
+            if not all_rows:
+                raise
         logger.info(f"港股列表获取完成: {len(all_rows)} 只")
         return pd.DataFrame(all_rows)
 
@@ -132,8 +150,10 @@ class EastMoneyProvider(DataProviderBase):
             klines = stock_data.get("qfqday", stock_data.get("day", []))
             if klines:
                 return self._parse_klines(klines)
-        except Exception:
-            pass
+            else:
+                logger.debug(f"腾讯 API 返回空数据: {symbol}")
+        except Exception as e:
+            logger.debug(f"腾讯 API 获取 {symbol} 失败: {e}")
         # baostock 备选
         return self._fetch_a_daily_baostock(symbol, start_date, end_date)
 
@@ -174,7 +194,7 @@ class EastMoneyProvider(DataProviderBase):
             finally:
                 bs.logout()
         except Exception as e:
-            logger.debug(f"baostock fetch failed for {symbol}: {e}")
+            logger.warning(f"baostock 获取 {symbol} 失败（所有数据源均失败）: {e}")
             return pd.DataFrame()
 
     def _fetch_hk_daily(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
@@ -187,8 +207,10 @@ class EastMoneyProvider(DataProviderBase):
             klines = stock_data.get("day", stock_data.get("qfqday", []))
             if klines:
                 return self._parse_klines(klines)
-        except Exception:
-            pass
+            else:
+                logger.debug(f"腾讯港股 API 返回空数据: {symbol}")
+        except Exception as e:
+            logger.debug(f"腾讯港股 API 获取 {symbol} 失败: {e}")
         # akshare 备选
         return self._fetch_hk_daily_akshare(symbol, start_date, end_date)
 

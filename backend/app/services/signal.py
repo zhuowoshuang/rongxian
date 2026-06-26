@@ -145,17 +145,17 @@ def generate_signal_for_stock(
 
     price = (
         db.query(DailyPrice)
-        .filter(DailyPrice.stock_id == stock_id)
+        .filter(DailyPrice.stock_id == stock_id, DailyPrice.trade_date <= signal_date)
         .order_by(DailyPrice.trade_date.desc())
         .first()
     )
     if not price:
         return None
 
-    # 获取最新技术指标（用于波动率自适应目标价/止损价）
+    # 获取 signal_date 当日或之前的技术指标（用于波动率自适应目标价/止损价）
     tech = (
         db.query(TechnicalIndicator)
-        .filter(TechnicalIndicator.stock_id == stock_id)
+        .filter(TechnicalIndicator.stock_id == stock_id, TechnicalIndicator.trade_date <= signal_date)
         .order_by(TechnicalIndicator.trade_date.desc())
         .first()
     )

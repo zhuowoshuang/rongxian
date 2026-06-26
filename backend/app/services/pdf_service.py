@@ -303,11 +303,11 @@ strong {{
 </head>
 <body>
 <div class="cover">
-    <div class="brand">融衔</div>
+    <div class="brand">清数智算</div>
     <h1>{html.escape(title)}</h1>
     <div class="subtitle">量化分析报告系统</div>
     <div class="disclaimer">
-        本报告由融衔量化分析系统自动生成，基于公开市场数据和多维评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
+        本报告由清数智算量化分析系统自动生成，基于公开市场数据和多维评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
     </div>
 </div>
 {body_html}

@@ -10,6 +10,8 @@ from app.models.daily_price import DailyPrice
 
 router = APIRouter(prefix="/api/pools", tags=["股票池"])
 
+POOL_DISPLAY_LIMIT = 70  # 每类股票池默认展示上限
+
 
 @router.get("")
 def get_stock_pool(
@@ -63,7 +65,7 @@ def get_stock_pool(
     else:
         query = query.order_by(StockScore.total_score.desc())
 
-    results = query.all()
+    results = query.limit(POOL_DISPLAY_LIMIT * 2).all()  # 多取一些，后面还要过滤
 
     # 批量查询最新价格（消除 N+1）
     stock_ids = [st.id for _, st in results]
@@ -104,7 +106,9 @@ def get_stock_pool(
             "pb": price.pb if price else None,
         })
 
-    return {"type": type, "date": str(latest), "count": len(items), "items": items}
+    # 限制展示数量
+    items = items[:POOL_DISPLAY_LIMIT]
+    return {"type": type, "date": str(latest), "count": len(items), "items": items, "has_more": len(items) >= POOL_DISPLAY_LIMIT}
 
 
 def _get_volatile_pool(db) -> dict:
@@ -222,6 +226,7 @@ def _get_volatile_pool(db) -> dict:
         })
 
     items.sort(key=lambda x: x.get("volatility", 0), reverse=True)
+    items = items[:POOL_DISPLAY_LIMIT]
 
     # 批量补充评分数据
     if items:
@@ -248,4 +253,4 @@ def _get_volatile_pool(db) -> dict:
                     item["risk_score"] = sc.risk_score
                     item["rating"] = sc.rating
 
-    return {"type": "volatile", "date": str(latest_date), "count": len(items), "items": items}
+    return {"type": "volatile", "date": str(latest_date), "count": len(items), "items": items, "has_more": len(items) >= POOL_DISPLAY_LIMIT}

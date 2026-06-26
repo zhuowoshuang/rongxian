@@ -62,63 +62,15 @@ def _rsi(closes: list, period: int = 14) -> float:
     return 100.0 - (100.0 / (1.0 + rs))
 _use_mock = type(provider).__name__ == "MockProvider"
 
-# 核心股票池 - 涵盖 A 股和港股优质标的（共40只）
-CORE_STOCKS = [
-    # ===== A股 - 消费板块 =====
-    {"symbol": "600519", "name": "贵州茅台", "market": "A_SHARE", "exchange": "SH", "industry": "白酒", "sector": "消费"},
-    {"symbol": "000858", "name": "五粮液", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
-    {"symbol": "000568", "name": "泸州老窖", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
-    {"symbol": "002304", "name": "洋河股份", "market": "A_SHARE", "exchange": "SZ", "industry": "白酒", "sector": "消费"},
-    {"symbol": "600887", "name": "伊利股份", "market": "A_SHARE", "exchange": "SH", "industry": "乳制品", "sector": "消费"},
-    {"symbol": "000651", "name": "格力电器", "market": "A_SHARE", "exchange": "SZ", "industry": "家电", "sector": "消费"},
-    {"symbol": "000333", "name": "美的集团", "market": "A_SHARE", "exchange": "SZ", "industry": "家电", "sector": "消费"},
-    # ===== A股 - 金融板块 =====
-    {"symbol": "600036", "name": "招商银行", "market": "A_SHARE", "exchange": "SH", "industry": "银行", "sector": "金融"},
-    {"symbol": "601318", "name": "中国平安", "market": "A_SHARE", "exchange": "SH", "industry": "保险", "sector": "金融"},
-    {"symbol": "000001", "name": "平安银行", "market": "A_SHARE", "exchange": "SZ", "industry": "银行", "sector": "金融"},
-    {"symbol": "601166", "name": "兴业银行", "market": "A_SHARE", "exchange": "SH", "industry": "银行", "sector": "金融"},
-    {"symbol": "600030", "name": "中信证券", "market": "A_SHARE", "exchange": "SH", "industry": "证券", "sector": "金融"},
-    # ===== A股 - 科技/新能源板块 =====
-    {"symbol": "300750", "name": "宁德时代", "market": "A_SHARE", "exchange": "SZ", "industry": "电池", "sector": "新能源"},
-    {"symbol": "601012", "name": "隆基绿能", "market": "A_SHARE", "exchange": "SH", "industry": "光伏", "sector": "新能源"},
-    {"symbol": "002475", "name": "立讯精密", "market": "A_SHARE", "exchange": "SZ", "industry": "消费电子", "sector": "科技"},
-    {"symbol": "300059", "name": "东方财富", "market": "A_SHARE", "exchange": "SZ", "industry": "金融科技", "sector": "科技"},
-    {"symbol": "002415", "name": "海康威视", "market": "A_SHARE", "exchange": "SZ", "industry": "安防", "sector": "科技"},
-    # ===== A股 - 医药板块 =====
-    {"symbol": "600276", "name": "恒瑞医药", "market": "A_SHARE", "exchange": "SH", "industry": "医药", "sector": "医药"},
-    {"symbol": "603259", "name": "药明康德", "market": "A_SHARE", "exchange": "SH", "industry": "CXO", "sector": "医药"},
-    {"symbol": "300760", "name": "迈瑞医疗", "market": "A_SHARE", "exchange": "SZ", "industry": "医疗器械", "sector": "医药"},
-    # ===== A股 - 公用事业/工业 =====
-    {"symbol": "600900", "name": "长江电力", "market": "A_SHARE", "exchange": "SH", "industry": "电力", "sector": "公用事业"},
-    {"symbol": "601888", "name": "中国中免", "market": "A_SHARE", "exchange": "SH", "industry": "免税", "sector": "消费"},
-    {"symbol": "600585", "name": "海螺水泥", "market": "A_SHARE", "exchange": "SH", "industry": "水泥", "sector": "工业"},
-    # ===== 港股 - 科技板块 =====
-    {"symbol": "00700", "name": "腾讯控股", "market": "HK", "exchange": "HK", "industry": "互联网", "sector": "科技"},
-    {"symbol": "09988", "name": "阿里巴巴-W", "market": "HK", "exchange": "HK", "industry": "电商", "sector": "科技"},
-    {"symbol": "09618", "name": "京东集团-SW", "market": "HK", "exchange": "HK", "industry": "电商", "sector": "科技"},
-    {"symbol": "01810", "name": "小米集团-W", "market": "HK", "exchange": "HK", "industry": "消费电子", "sector": "科技"},
-    {"symbol": "03690", "name": "美团-W", "market": "HK", "exchange": "HK", "industry": "本地生活", "sector": "科技"},
-    {"symbol": "09888", "name": "百度集团-SW", "market": "HK", "exchange": "HK", "industry": "搜索引擎", "sector": "科技"},
-    {"symbol": "09999", "name": "网易-S", "market": "HK", "exchange": "HK", "industry": "游戏", "sector": "科技"},
-    {"symbol": "01024", "name": "快手-W", "market": "HK", "exchange": "HK", "industry": "短视频", "sector": "科技"},
-    # ===== 港股 - 金融板块 =====
-    {"symbol": "02318", "name": "中国平安H", "market": "HK", "exchange": "HK", "industry": "保险", "sector": "金融"},
-    {"symbol": "01299", "name": "友邦保险", "market": "HK", "exchange": "HK", "industry": "保险", "sector": "金融"},
-    {"symbol": "00388", "name": "香港交易所", "market": "HK", "exchange": "HK", "industry": "交易所", "sector": "金融"},
-    {"symbol": "03968", "name": "招商银行H", "market": "HK", "exchange": "HK", "industry": "银行", "sector": "金融"},
-    # ===== 港股 - 消费/医药板块 =====
-    {"symbol": "02020", "name": "安踏体育", "market": "HK", "exchange": "HK", "industry": "运动服饰", "sector": "消费"},
-    {"symbol": "09633", "name": "农夫山泉", "market": "HK", "exchange": "HK", "industry": "饮料", "sector": "消费"},
-    {"symbol": "02269", "name": "药明生物", "market": "HK", "exchange": "HK", "industry": "CXO", "sector": "医药"},
-    {"symbol": "00027", "name": "银河娱乐", "market": "HK", "exchange": "HK", "industry": "博彩", "sector": "消费"},
-    {"symbol": "01928", "name": "金沙中国有限公司", "market": "HK", "exchange": "HK", "industry": "博彩", "sector": "消费"},
-]
+# 从统一股票池导入（300+ 只 A 股 + 港股）
+from app.stock_universe import get_all_stocks, find_stock_by_symbol
+CORE_STOCKS = get_all_stocks()
 
 
 def seed(force: bool = False):
     """执行数据种子 - 使用真实东方财富数据"""
     print("=" * 60)
-    print("融衔 数据初始化 (东方财富真实数据)")
+    print("清数智算 数据初始化 (东方财富真实数据)")
     print("=" * 60)
 
     Base.metadata.create_all(bind=engine)
@@ -323,10 +275,31 @@ def seed(force: bool = False):
     signal_count = _generate_signals(db, today)
     print(f"  Total: {signal_count} signals")
 
-    # 7. 生成报告
-    print("\n[7/8] Generating daily report...")
+    # 7. 生成报告（每日 + 个股 + 风格）
+    print("\n[7/8] Generating reports...")
     report = generate_daily_report(db, today)
-    print(f"  Report: {report.title}")
+    logger.info(f"Daily: {report.title}")
+
+    # 为评分 Top 5 的股票生成个股报告
+    from app.services.report import generate_stock_report, generate_style_report
+    from app.models.stock_score import StockScore
+    top_scores = db.query(StockScore).filter(StockScore.score_date == today).order_by(StockScore.total_score.desc()).limit(5).all()
+    for sc in top_scores:
+        stock = db.query(Stock).filter(Stock.id == sc.stock_id).first()
+        if stock:
+            try:
+                sr = generate_stock_report(db, sc.stock_id, today)
+                logger.info(f"Stock: {sr.title}")
+            except Exception as e:
+                logger.warning(f"Stock {stock.symbol}: skipped ({e})")
+
+    # 生成三种风格报告
+    for style in ["steady", "aggressive", "conservative"]:
+        try:
+            style_rpt = generate_style_report(db, today, style)
+            logger.info(f"Style: {style_rpt.title}")
+        except Exception as e:
+            logger.warning(f"Style {style}: skipped ({e})")
 
     # 8. 创建组合
     print("\n[8/8] Creating portfolio...")
@@ -358,12 +331,12 @@ def _seed_users(db):
                 role=acc["role"],
             )
             db.add(user)
-            print(f"  Created user: {acc['username']} / {acc['password']}")
+            logger.info(f"Created user: {acc['username']} (role={acc['role']})")
         else:
             # 确保已有用户的 role 始终正确
             if existing.role != acc["role"]:
                 existing.role = acc["role"]
-                print(f"  Updated {acc['username']} role -> {acc['role']}")
+                logger.info(f"Updated {acc['username']} role -> {acc['role']}")
     db.commit()
 
     # 创建默认通知设置
@@ -451,48 +424,10 @@ def _compute_technicals(db, stock_map):
 
 
 def _score_stocks(db, stock_map, score_date):
-    """对所有股票使用真实算法评分"""
-    count = 0
-    for symbol, stock_id in stock_map.items():
-        price = db.query(DailyPrice).filter(DailyPrice.stock_id == stock_id).order_by(DailyPrice.trade_date.desc()).first()
-        financial = db.query(FinancialMetric).filter(FinancialMetric.stock_id == stock_id).order_by(FinancialMetric.report_period.desc()).first()
-        tech = db.query(TechnicalIndicator).filter(TechnicalIndicator.stock_id == stock_id).order_by(TechnicalIndicator.trade_date.desc()).first()
-
-        if not price:
-            continue
-
-        q_score, q_detail = calculate_quality_score(financial) if financial else (0, ["无财务数据"])
-        v_score, v_detail = calculate_valuation_score(price, financial) if financial else (0, ["无财务数据"])
-        g_score, g_detail = calculate_growth_score(financial) if financial else (0, ["无财务数据"])
-        t_score, t_detail = calculate_trend_score(price, tech) if tech else (0, ["无技术数据"])
-        r_score, r_detail = calculate_risk_score(financial, price) if financial else (0, ["无财务数据"])
-
-        total = q_score + v_score + g_score + t_score + r_score
-        all_details = q_detail + v_detail + g_detail + t_detail + r_detail
-        # detail 列表元素为 dict: {"item": ..., "value": ..., "score": ..., "status": ...}
-        if all_details:
-            reason = "; ".join(f"{d['item']}{d['value']}" if isinstance(d, dict) else str(d) for d in all_details[:5])
-        else:
-            reason = f"质量{q_score:.0f} 估值{v_score:.0f} 成长{g_score:.0f} 趋势{t_score:.0f} 风险{r_score:.0f}"
-
-        rating = get_rating(total)
-
-        score = StockScore(
-            stock_id=stock_id,
-            score_date=score_date,
-            total_score=round(total, 1),
-            quality_score=round(q_score, 1),
-            valuation_score=round(v_score, 1),
-            growth_score=round(g_score, 1),
-            trend_score=round(t_score, 1),
-            risk_score=round(r_score, 1),
-            rating=rating,
-            reason_summary=reason,
-        )
-        db.add(score)
-        count += 1
-    db.commit()
-    return count
+    """对所有股票使用真实算法评分（含行业百分位排名）"""
+    from app.services.scoring import score_all_stocks
+    results = score_all_stocks(db, score_date)
+    return len(results)
 
 
 def _generate_signals(db, signal_date):
@@ -504,9 +439,11 @@ def _generate_signals(db, signal_date):
         if not price:
             continue
 
+        tech = db.query(TechnicalIndicator).filter(TechnicalIndicator.stock_id == sc.stock_id).order_by(TechnicalIndicator.trade_date.desc()).first()
+
         sig_type, strength, logic = determine_signal_type(sc)
         position = calculate_position(sig_type, strength)
-        entry, target, stop_loss = calculate_prices(price, sig_type)
+        entry, target, stop_loss = calculate_prices(price, sig_type, tech)
 
         holding_map = {"BUY": "3-6个月", "ADD": "2-4个月", "WATCH": "-", "REDUCE": "逐步减仓", "SELL": "立即"}
 

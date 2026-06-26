@@ -91,6 +91,11 @@ def _generate_price_series(base_price: float, days: int = 120, volatility: float
     returns = rng.normal(0.0003, volatility, n)
     prices = base_price * np.cumprod(1 + returns)
 
+    # 用 base_price 派生一致的 PE/PB（而非随机）
+    # 假设 EPS = base_price / PE_target，然后 PE 随价格波动
+    pe_base = max(8, min(60, 1000 / base_price))  # 低价股 PE 偏高，高价股 PE 偏低
+    pb_base = max(0.5, min(12, 50 / base_price))
+
     df = pd.DataFrame({
         "trade_date": dates,
         "open": prices * (1 + rng.uniform(-0.01, 0.01, n)),
@@ -102,8 +107,8 @@ def _generate_price_series(base_price: float, days: int = 120, volatility: float
         "turnover": rng.uniform(1e8, 1e10, n),
         "turnover_rate": rng.uniform(0.5, 5, n),
         "market_cap": prices * rng.uniform(1e9, 1e11, n),
-        "pe": rng.uniform(10, 60, n),
-        "pb": rng.uniform(1, 15, n),
+        "pe": pe_base * (prices / base_price) * (1 + rng.uniform(-0.05, 0.05, n)),  # PE 随价格变化
+        "pb": pb_base * (prices / base_price) * (1 + rng.uniform(-0.05, 0.05, n)),  # PB 随价格变化
         "dividend_yield": rng.uniform(0, 4, n),
     })
     df.iloc[0, df.columns.get_loc("pre_close")] = base_price
@@ -158,8 +163,11 @@ class MockProvider(DataProviderBase):
     def fetch_daily_prices(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
         info = MOCK_STOCKS.get(symbol)
         if not info:
-            return pd.DataFrame()
-        volatility = 0.025 if info["sector"] == "科技" else 0.018
+            # 为未知股票生成随机基础数据
+            rng = random.Random(hash(symbol) % 2**31)
+            base_price = rng.uniform(5, 500)
+            info = {"base_price": base_price, "sector": "其他"}
+        volatility = 0.025 if info.get("sector") == "科技" else 0.018
         df = _generate_price_series(info["base_price"], days=180, volatility=volatility)
         if start_date:
             df = df[df["trade_date"] >= pd.Timestamp(start_date)]
@@ -170,7 +178,19 @@ class MockProvider(DataProviderBase):
     def fetch_financial_metrics(self, symbol: str) -> pd.DataFrame:
         info = MOCK_STOCKS.get(symbol)
         if not info:
-            return pd.DataFrame()
+            # 为未知股票生成随机财务数据
+            rng = random.Random(hash(symbol) % 2**31)
+            info = {
+                "base_price": rng.uniform(5, 500),
+                "revenue": rng.uniform(100, 5000),
+                "revenue_yoy": rng.uniform(-10, 30),
+                "net_profit": rng.uniform(10, 500),
+                "profit_yoy": rng.uniform(-15, 40),
+                "debt_ratio": rng.uniform(20, 80),
+                "eps": rng.uniform(0.5, 10),
+                "bvps": rng.uniform(3, 50),
+                "roe": rng.uniform(5, 25),
+            }
         return _generate_financial_metrics(info)
 
     def fetch_market_index(self, market: str) -> list:

@@ -8,7 +8,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import ToastContainer from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
-  title: "融衔 - A股港股智能分析系统",
+  title: "清数智算 - A股港股智能分析系统",
   description: "A股 + 港股中长期基本面选股与交易信号报告系统",
 };
 

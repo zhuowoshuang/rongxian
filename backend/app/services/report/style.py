@@ -532,9 +532,9 @@ def generate_style_report(db: Session, report_date: date, style: str) -> Report:
 
 ---
 
-> **免责声明:** 本报告由融衔量化分析系统自动生成，基于 {report_date} 公开市场数据和{cfg['name']}评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
+> **免责声明:** 本报告由清数智算量化分析系统自动生成，基于 {report_date} 公开市场数据和{cfg['name']}评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
 
-*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 融衔量化分析系统 v2.0*
+*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清数智算量化分析系统 v2.0*
 """
 
     # AI 风格策略洞察（DeepSeek）

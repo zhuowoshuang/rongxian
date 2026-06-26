@@ -79,6 +79,7 @@ export default function PoolsPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-dark-muted">
               {poolTypes.find(pt => pt.key === activeType)?.label} ({t("common.items", { count: String(data?.count || 0) })})
+              {data?.has_more && <span className="text-xs text-dark-muted ml-2">· {t("pools.searchForMore")}</span>}
             </h3>
             {data?.date && <span className="text-xs text-dark-muted">{t("pools.scoreDate")} {data.date}</span>}
           </div>

@@ -1,5 +1,5 @@
 """
-个股深度分析报告生成模块 — 融衔量化分析系统
+个股深度分析报告生成模块 — 清数智算量化分析系统
 从20年华尔街投资专家视角生成专业级个股研究报告
 """
 from datetime import date, datetime
@@ -71,11 +71,36 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
         Stock.industry == stock.industry, Stock.id != stock_id, Stock.status == "ACTIVE"
     ).all()
     peer_scores = []
-    for p in peers:
-        ps = db.query(StockScore).filter(StockScore.stock_id == p.id).order_by(StockScore.score_date.desc()).first()
-        pp = db.query(DailyPrice).filter(DailyPrice.stock_id == p.id).order_by(DailyPrice.trade_date.desc()).first()
-        if ps and pp:
-            peer_scores.append({"symbol": p.symbol, "name": p.name, "score": ps.total_score, "rating": ps.rating, "close": pp.close, "pe": pp.pe})
+    if peers:
+        peer_ids = [p.id for p in peers]
+        peer_map = {p.id: p for p in peers}
+        # 批量查询同行最新评分（消除 N+1）
+        from sqlalchemy import func as sqlfunc
+        latest_score_sq = db.query(
+            StockScore.stock_id, sqlfunc.max(StockScore.score_date).label("max_date")
+        ).filter(StockScore.stock_id.in_(peer_ids)).group_by(StockScore.stock_id).subquery()
+        peer_score_records = db.query(StockScore).join(
+            latest_score_sq,
+            (StockScore.stock_id == latest_score_sq.c.stock_id) &
+            (StockScore.score_date == latest_score_sq.c.max_date)
+        ).all()
+        score_map = {sc.stock_id: sc for sc in peer_score_records}
+        # 批量查询同行最新价格（消除 N+1）
+        latest_price_sq = db.query(
+            DailyPrice.stock_id, sqlfunc.max(DailyPrice.trade_date).label("max_date")
+        ).filter(DailyPrice.stock_id.in_(peer_ids)).group_by(DailyPrice.stock_id).subquery()
+        peer_price_records = db.query(DailyPrice).join(
+            latest_price_sq,
+            (DailyPrice.stock_id == latest_price_sq.c.stock_id) &
+            (DailyPrice.trade_date == latest_price_sq.c.max_date)
+        ).all()
+        price_map = {pp.stock_id: pp for pp in peer_price_records}
+        for pid in peer_ids:
+            ps = score_map.get(pid)
+            pp = price_map.get(pid)
+            p = peer_map[pid]
+            if ps and pp:
+                peer_scores.append({"symbol": p.symbol, "name": p.name, "score": ps.total_score, "rating": ps.rating, "close": pp.close, "pe": pp.pe})
 
     # 价格统计
     if prices_60 and latest_price:
@@ -630,9 +655,9 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
 
 ---
 
-> **免责声明:** 本报告由融衔量化分析系统自动生成，基于 {report_date} 公开市场数据和多维量化评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
+> **免责声明:** 本报告由清数智算量化分析系统自动生成，基于 {report_date} 公开市场数据和多维量化评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
 
-*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 融衔量化分析系统 v2.0*
+*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清数智算量化分析系统 v2.0*
 """
 
     # AI 个股深度分析（DeepSeek）

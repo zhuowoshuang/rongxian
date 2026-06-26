@@ -1,5 +1,5 @@
 """
-每日策略报告 — 融衔量化分析系统
+每日策略报告 — 清数智算量化分析系统
 从20年华尔街投资专家视角生成专业级每日投资策略报告
 """
 from datetime import date, datetime
@@ -607,7 +607,7 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
 
 ### 8.3 免责声明
 
-> 本报告由融衔量化分析系统自动生成，基于{report_date}公开市场数据和多维量化评分模型。报告中的分析、建议和评分仅供参考，不构成任何形式的投资建议或承诺。
+> 本报告由清数智算量化分析系统自动生成，基于{report_date}公开市场数据和多维量化评分模型。报告中的分析、建议和评分仅供参考，不构成任何形式的投资建议或承诺。
 >
 > 投资有风险，入市需谨慎。过往业绩不代表未来表现。投资者应根据自身风险承受能力和投资目标，独立做出投资决策，并自行承担投资风险。
 >
@@ -615,24 +615,14 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
 
 ---
 
-*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 融衔量化分析系统 v2.0*
+*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清数智算量化分析系统 v2.0*
 *本报告共覆盖 {total} 只标的（A股 {len(a_share_items)} 只 + 港股 {len(hk_items)} 只），包含 {len(dist['BUY'])} 个买入信号、{len(dist['ADD'])} 个加仓信号、{len(dist['WATCH'])} 个观望信号、{len(dist['REDUCE'])} 个减仓信号、{len(dist['SELL'])} 个卖出信号*
 """
 
-    # AI 深度洞察（DeepSeek）
-    ai_analysis = ""
-    try:
-        from app.services.ai_service import generate_ai_market_insight
-        ai_market_data = {
-            "market_status": market_status,
-            "buy_add": buy_add,
-            "reduce_sell": reduce_sell,
-            "top_buys": [{"symbol": s["symbol"], "name": s["name"], "score": s.get("total_score", 0), "type": s.get("signal_type", "")} for s in (dist["BUY"] + dist["ADD"])[:5]],
-            "risk_items": [{"symbol": s["symbol"], "name": s["name"], "type": s.get("signal_type", "")} for s in (dist["REDUCE"] + dist["SELL"])[:5]],
-        }
-        ai_analysis = generate_ai_market_insight(db, ai_market_data)
-        if ai_analysis:
-            md += f"""
+    # AI 深度洞察（复用前面的 AI 分析结果，避免重复调用 API）
+    ai_analysis = expert_view if expert_view != fallback_view else ""
+    if ai_analysis:
+        md += f"""
 
 ---
 
@@ -643,9 +633,6 @@ def generate_daily_report(db: Session, report_date: date, market_filter: list[st
 {ai_analysis}
 
 """
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"AI 市场分析生成失败: {e}")
 
     content_json = {
         "market_status": market_status,

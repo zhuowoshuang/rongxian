@@ -85,11 +85,11 @@ export default function StockDetailPage() {
                 <span className="text-3xl font-bold text-white font-mono">{latest_price.close?.toFixed(2)}</span>
                 {latest_price.pe && <span className="text-sm text-dark-muted font-mono">PE {latest_price.pe.toFixed(1)}</span>}
                 {latest_price.pb && <span className="text-sm text-dark-muted font-mono">PB {latest_price.pb.toFixed(1)}</span>}
-                {latest_price.market_cap && <span className="text-sm text-dark-muted font-mono">{t("stock.marketCap")} {(latest_price.market_cap / 1e8).toFixed(0)}亿</span>}
+                {latest_price.market_cap && <span className="text-sm text-dark-muted font-mono">{t("stock.marketCap")} {latest_price.market_cap.toFixed(0)}亿</span>}
               </div>
             )}
           </div>
-          {score && (
+          {score && score.total > 0 && (
             <div className="text-right">
               <div className="text-4xl font-bold text-primary-400 font-mono">{score.total?.toFixed(0)}</div>
               <span className={`inline-block mt-1 px-3 py-1 rounded-full text-sm font-bold text-white ${
@@ -164,52 +164,68 @@ export default function StockDetailPage() {
 
       {activeTab === "score" && score && <ScoreBreakdown score={score} />}
 
-      {activeTab === "signal" && signal && (
+      {activeTab === "signal" && (
         <GlassCard title={t("stock.signal")}>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
-              <p className="text-xs text-dark-muted">{t("stock.signalType")}</p>
-              <span className={signalTypeClass(signal.type) + " mt-1 inline-block"}>{signalTypeLabel(signal.type)}</span>
-            </div>
-            <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
-              <p className="text-xs text-dark-muted">{t("stock.signalStrength")}</p>
-              <p className="star text-lg mt-1">{renderStars(signal.strength)}</p>
-            </div>
-            <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
-              <p className="text-xs text-dark-muted">{t("stock.suggestedPosition")}</p>
-              <p className="text-lg font-bold text-white mt-1 font-mono">{signal.position > 0 ? `${signal.position}%` : "-"}</p>
-            </div>
-            <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
-              <p className="text-xs text-dark-muted">{t("stock.holdingPeriod")}</p>
-              <p className="text-lg font-bold text-white mt-1">{signal.holding_period}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-center">
-              <p className="text-xs text-dark-muted">{t("stock.entryPrice")}</p>
-              <p className="text-lg font-bold text-emerald-400 font-mono">{signal.entry_price?.toFixed(2) || "-"}</p>
-            </div>
-            <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 text-center">
-              <p className="text-xs text-dark-muted">{t("stock.targetPrice")}</p>
-              <p className="text-lg font-bold text-blue-400 font-mono">{signal.target_price?.toFixed(2) || "-"}</p>
-            </div>
-            <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20 text-center">
-              <p className="text-xs text-dark-muted">{t("stock.stopLoss")}</p>
-              <p className="text-lg font-bold text-red-400 font-mono">{signal.stop_loss?.toFixed(2) || "-"}</p>
-            </div>
-          </div>
-          {signal.logic && (
-            <div className="p-4 bg-white/[0.03] rounded-xl border border-white/[0.06]">
-              <p className="text-xs text-dark-muted mb-2">{t("stock.signalLogic")}</p>
-              <p className="text-sm text-dark-text">{signal.logic.reason}</p>
-            </div>
-          )}
-          {signal.risk && (
-            <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/20 mt-4">
-              <p className="text-xs text-amber-400 mb-2">{t("stock.riskWarning")}</p>
-              <ul className="text-sm text-amber-400/80 space-y-1">
-                {signal.risk.items?.map((r: string, i: number) => <li key={i}>- {r}</li>)}
-              </ul>
+          {signal ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+                  <p className="text-xs text-dark-muted">{t("stock.signalType")}</p>
+                  <span className={signalTypeClass(signal.type) + " mt-1 inline-block"}>{signalTypeLabel(signal.type)}</span>
+                </div>
+                <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+                  <p className="text-xs text-dark-muted">{t("stock.signalStrength")}</p>
+                  <p className="star text-lg mt-1">{renderStars(signal.strength)}</p>
+                </div>
+                <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+                  <p className="text-xs text-dark-muted">{t("stock.suggestedPosition")}</p>
+                  <p className="text-lg font-bold text-white mt-1 font-mono">{signal.position > 0 ? `${signal.position}%` : "-"}</p>
+                </div>
+                <div className="p-3 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+                  <p className="text-xs text-dark-muted">{t("stock.holdingPeriod")}</p>
+                  <p className="text-lg font-bold text-white mt-1">{signal.holding_period || "-"}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-center">
+                  <p className="text-xs text-dark-muted">{t("stock.entryPrice")}</p>
+                  <p className="text-lg font-bold text-emerald-400 font-mono">{signal.entry_price?.toFixed(2) || "-"}</p>
+                </div>
+                <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 text-center">
+                  <p className="text-xs text-dark-muted">{t("stock.targetPrice")}</p>
+                  <p className="text-lg font-bold text-blue-400 font-mono">{signal.target_price?.toFixed(2) || "-"}</p>
+                </div>
+                <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20 text-center">
+                  <p className="text-xs text-dark-muted">{t("stock.stopLoss")}</p>
+                  <p className="text-lg font-bold text-red-400 font-mono">{signal.stop_loss?.toFixed(2) || "-"}</p>
+                </div>
+              </div>
+              {signal.logic && typeof signal.logic === "object" && signal.logic.reason && (
+                <div className="p-4 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+                  <p className="text-xs text-dark-muted mb-2">{t("stock.signalLogic")}</p>
+                  <p className="text-sm text-dark-text leading-relaxed">{signal.logic.reason}</p>
+                </div>
+              )}
+              {signal.logic && typeof signal.logic === "string" && (
+                <div className="p-4 bg-white/[0.03] rounded-xl border border-white/[0.06]">
+                  <p className="text-xs text-dark-muted mb-2">{t("stock.signalLogic")}</p>
+                  <p className="text-sm text-dark-text leading-relaxed">{signal.logic}</p>
+                </div>
+              )}
+              {signal.risk && typeof signal.risk === "object" && signal.risk.items && signal.risk.items.length > 0 && (
+                <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/20 mt-4">
+                  <p className="text-xs text-amber-400 mb-2">{t("stock.riskWarning")}</p>
+                  <ul className="text-sm text-amber-400/80 space-y-1">
+                    {signal.risk.items.map((r: string, i: number) => <li key={i}>• {r}</li>)}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-12 text-dark-muted text-sm">
+              <p className="text-3xl mb-3">📡</p>
+              <p>{t("common.noData")}</p>
+              <p className="text-xs mt-1 text-dark-muted/60">{t("stock.signalEmptyHint")}</p>
             </div>
           )}
         </GlassCard>
@@ -242,7 +258,10 @@ export default function StockDetailPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-dark-muted text-sm">{t("common.noResearch")}</div>
+            <div className="text-center py-12 text-dark-muted text-sm">
+              <p className="text-3xl mb-3">📄</p>
+              <p>{t("stock.reportEmptyHint")}</p>
+            </div>
           )}
         </GlassCard>
       )}

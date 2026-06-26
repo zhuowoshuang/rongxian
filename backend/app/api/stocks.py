@@ -24,7 +24,12 @@ def search_stocks(
     market: str = Query(None, description="市场: A_SHARE / HK"),
     db: Session = Depends(get_db),
 ):
-    """搜索股票"""
+    """
+    搜索股票（三级降级）
+    1. 本地数据库
+    2. 预置股票宇宙（268 只）
+    3. 东方财富实时 API（任意股票）
+    """
     query = db.query(Stock).filter(Stock.status == "ACTIVE")
     if market:
         query = query.filter(Stock.market == market)
@@ -34,6 +39,77 @@ def search_stocks(
         (Stock.symbol.like(f"%{escaped}%", escape="\\")) | (Stock.name.like(f"%{escaped}%", escape="\\"))
     )
     stocks = query.limit(20).all()
+
+    # 本地无结果时，从预置股票宇宙中查找并自动入库
+    if not stocks:
+        from app.stock_universe import search_stocks_local
+        candidates = search_stocks_local(keyword, market=market, limit=10)
+        for c in candidates:
+            existing = db.query(Stock).filter(Stock.symbol == c["symbol"]).first()
+            if existing:
+                stocks.append(existing)
+            else:
+                new_stock = Stock(
+                    symbol=c["symbol"],
+                    name=c["name"],
+                    market=c["market"],
+                    exchange=c["exchange"],
+                    industry=c.get("industry"),
+                    sector=c.get("sector"),
+                    status="ACTIVE",
+                )
+                db.add(new_stock)
+                db.flush()
+                stocks.append(new_stock)
+        if stocks:
+            db.commit()
+
+    # 仍然无结果时，从东方财富实时 API 搜索
+    if not stocks:
+        try:
+            from app.data_providers.http_client import get_json
+            import logging
+            logger = logging.getLogger(__name__)
+            # 东方财富搜索 API
+            url = f"https://searchapi.eastmoney.com/api/suggest/get?input={keyword}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=10"
+            data = get_json(url, timeout=5)
+            items = data.get("QuotationCodeTable", {}).get("Data", []) or []
+            for item in items:
+                code = item.get("Code", "")
+                name = item.get("Name", "")
+                market_type = item.get("MktNum", "")
+                if not code or not name:
+                    continue
+                # 判断市场
+                if market_type == "1" or code.startswith(("6", "5", "9")):
+                    stk_market, exchange = "A_SHARE", "SH"
+                elif market_type == "0" or code.startswith(("0", "3")):
+                    stk_market, exchange = "A_SHARE", "SZ"
+                elif market_type in ("2", "128"):
+                    stk_market, exchange = "HK", "HK"
+                else:
+                    stk_market, exchange = "A_SHARE", "SZ"
+                if market and stk_market != market:
+                    continue
+                # 检查是否已存在
+                existing = db.query(Stock).filter(Stock.symbol == code).first()
+                if existing:
+                    stocks.append(existing)
+                else:
+                    new_stock = Stock(
+                        symbol=code, name=name, market=stk_market,
+                        exchange=exchange, industry="", status="ACTIVE",
+                    )
+                    db.add(new_stock)
+                    db.flush()
+                    stocks.append(new_stock)
+            if stocks:
+                db.commit()
+                logger.info(f"东方财富搜索 '{keyword}' 找到 {len(stocks)} 只")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"东方财富搜索 API 失败: {e}")
+
     return [
         {
             "id": s.id,
@@ -130,15 +206,19 @@ def add_stock_and_fetch(
                     DailyPrice.trade_date == trade_date
                 ).first()
                 if not existing:
+                    # 安全取值：None 时不 round，避免 TypeError
+                    def _safe_round(val, ndigits):
+                        return round(val, ndigits) if val is not None else None
+
                     dp = DailyPrice(
                         stock_id=stock_id,
                         trade_date=trade_date,
-                        open=round(row["open"], 2),
-                        high=round(row["high"], 2),
-                        low=round(row["low"], 2),
-                        close=round(row["close"], 2),
-                        volume=round(row["volume"], 0),
-                        turnover=round(row.get("turnover", 0), 0),
+                        open=_safe_round(row.get("open"), 2),
+                        high=_safe_round(row.get("high"), 2),
+                        low=_safe_round(row.get("low"), 2),
+                        close=_safe_round(row.get("close"), 2),
+                        volume=_safe_round(row.get("volume"), 0) or 0,
+                        turnover=_safe_round(row.get("turnover"), 0) or 0,
                     )
                     db.add(dp)
                     price_count += 1
@@ -410,7 +490,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         .first()
     )
 
-    # 相关报告（从研报表查询该股票的研报）
+    # 相关报告（从研报表查询该股票的研报，若无则按需从东方财富获取）
     research_reports = (
         db.query(ResearchReport)
         .filter(ResearchReport.stock_code == symbol)
@@ -418,6 +498,26 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         .limit(10)
         .all()
     )
+
+    # 本地无研报时，按需从东方财富获取并入库
+    if not research_reports:
+        try:
+            from app.services.stock_sync import sync_research_reports
+            import logging
+            logger = logging.getLogger(__name__)
+            result = sync_research_reports(db, symbol=symbol, max_pages=1)
+            if result.get("added", 0) > 0:
+                logger.info(f"按需获取研报 {symbol}: 新增 {result['added']} 条")
+                research_reports = (
+                    db.query(ResearchReport)
+                    .filter(ResearchReport.stock_code == symbol)
+                    .order_by(ResearchReport.publish_date.desc())
+                    .limit(10)
+                    .all()
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"按需获取研报失败 {symbol}: {e}")
 
     return {
         "stock": {

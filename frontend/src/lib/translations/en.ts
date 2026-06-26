@@ -1,6 +1,6 @@
 const en: Record<string, string> = {
   // App
-  "app.name": "RongXian",
+  "app.name": "QingSu",
   "app.subtitle": "A/HK Stock Analysis",
   "app.description": "A-Share & HK Stock Intelligent Analysis System",
   "app.disclaimer": "This system is for research and analysis purposes only and does not constitute investment advice.",
@@ -468,6 +468,9 @@ const en: Record<string, string> = {
   "strategy.neutral": "Neutral",
   "strategy.mildlyBearish": "Mildly Bearish",
   "strategy.bearish": "Bearish",
+  "pools.searchForMore": "Search for more stocks",
+  "stock.signalEmptyHint": "No trading signals for this stock yet",
+  "stock.reportEmptyHint": "No research reports available",
   // Pagination
   "admin.prevPage": "Previous",
   "admin.nextPage": "Next",

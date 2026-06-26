@@ -1,9 +1,9 @@
 "use client";
 
-import { useLanguage } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 
 export default function LoadingScreen() {
-  const { t } = useLanguage();
+  const { t } = useTranslation();
 
   return (
     <div className="fixed inset-0 bg-dark-bg flex items-center justify-center z-50">

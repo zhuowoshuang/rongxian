@@ -33,6 +33,7 @@ def _is_limit_locked(current_close: float, prev_close: float, symbol: str = "") 
 from app.models.daily_price import DailyPrice
 from app.models.stock_score import StockScore
 from app.models.financial_metric import FinancialMetric
+from app.models.technical_indicator import TechnicalIndicator
 
 
 def run_backtest(
@@ -69,52 +70,151 @@ def run_backtest(
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
 
-    prices = (
-        db.query(DailyPrice)
+    # 自动调整开始日期：确保有足够的技术指标数据（MA60 需要 60 个交易日）
+    earliest_ma60 = (
+        db.query(func.min(TechnicalIndicator.trade_date))
+        .filter(
+            TechnicalIndicator.stock_id.in_(stock_ids),
+            TechnicalIndicator.ma60.isnot(None),
+        )
+        .scalar()
+    )
+    if earliest_ma60 and earliest_ma60 > start:
+        start = earliest_ma60
+        print(f"[backtest] Auto-adjusted start date to {start} (MA60 availability)")
+
+    # 获取交易日期列表
+    trade_dates = (
+        db.query(DailyPrice.trade_date)
         .filter(
             DailyPrice.stock_id.in_(stock_ids),
             DailyPrice.trade_date >= start,
             DailyPrice.trade_date <= end,
         )
+        .distinct()
         .order_by(DailyPrice.trade_date)
         .all()
     )
+    trade_dates = [td[0] for td in trade_dates]
 
-    if not prices:
-        return {"error": "该时间段内无历史数据，请先运行 seed 脚本导入数据"}
+    if not trade_dates or len(trade_dates) < 5:
+        return {"error": f"历史数据不足（仅 {len(trade_dates)} 个交易日），无法回测"}
 
-    # 按日期分组
+    # 按日期分批查询价格数据（避免内存溢出）
     date_map: dict[date, dict[int, DailyPrice]] = {}
-    for p in prices:
-        if p.trade_date not in date_map:
-            date_map[p.trade_date] = {}
-        date_map[p.trade_date][p.stock_id] = p
-
-    trade_dates = sorted(date_map.keys())
+    batch_size = 10  # 每次查询 10 天的数据
+    for i in range(0, len(trade_dates), batch_size):
+        batch_dates = trade_dates[i:i + batch_size]
+        batch_prices = (
+            db.query(DailyPrice)
+            .filter(
+                DailyPrice.stock_id.in_(stock_ids),
+                DailyPrice.trade_date.in_(batch_dates),
+            )
+            .all()
+        )
+        for p in batch_prices:
+            if p.trade_date not in date_map:
+                date_map[p.trade_date] = {}
+            date_map[p.trade_date][p.stock_id] = p
     if len(trade_dates) < 5:
         return {"error": f"历史数据不足（仅 {len(trade_dates)} 个交易日），无法回测"}
 
-    # 预加载所有评分数据，按 stock_id 和 score_date 索引（消除前瞻偏差）
-    all_score_records = (
-        db.query(StockScore)
-        .filter(StockScore.stock_id.in_(stock_ids))
-        .order_by(StockScore.score_date)
+    # 预加载财务数据（按 stock_id 索引，按报告期排序）
+    all_financials = (
+        db.query(FinancialMetric)
+        .filter(FinancialMetric.stock_id.in_(stock_ids))
+        .order_by(FinancialMetric.report_period)
         .all()
     )
-    scores_by_stock: dict[int, list] = {}
-    for sc in all_score_records:
-        scores_by_stock.setdefault(sc.stock_id, []).append((sc.score_date, sc.total_score))
+    financials_by_stock: dict[int, list[FinancialMetric]] = {}
+    for fm in all_financials:
+        financials_by_stock.setdefault(fm.stock_id, []).append(fm)
 
-    def _get_score_at_date(sid: int, ref_date: date) -> float:
-        """获取某只股票在 ref_date 当天或之前最近的评分（消除前瞻偏差）"""
-        records = scores_by_stock.get(sid, [])
-        best = None
-        for score_date, total_score in records:
-            if score_date <= ref_date:
-                best = total_score
+    # 预加载技术指标（按 stock_id 和 trade_date 索引）
+    all_technicals = (
+        db.query(TechnicalIndicator)
+        .filter(TechnicalIndicator.stock_id.in_(stock_ids))
+        .order_by(TechnicalIndicator.trade_date)
+        .all()
+    )
+    techs_by_stock: dict[int, list[TechnicalIndicator]] = {}
+    for ti in all_technicals:
+        techs_by_stock.setdefault(ti.stock_id, []).append(ti)
+
+    # 评分缓存：避免重复计算
+    _score_cache: dict[tuple[int, date], float | None] = {}
+
+    def _get_score_at_date(sid: int, ref_date: date) -> float | None:
+        """
+        动态计算某只股票在 ref_date 时点的评分（消除前视偏差）
+        只使用 ref_date 当天或之前的数据
+        """
+        cache_key = (sid, ref_date)
+        if cache_key in _score_cache:
+            return _score_cache[cache_key]
+
+        # 获取 ref_date 当天或之前最近的价格
+        price_row = None
+        if ref_date in date_map and sid in date_map[ref_date]:
+            price_row = date_map[ref_date][sid]
+        if not price_row:
+            # 查找 ref_date 之前最近的价格
+            for td in reversed(trade_dates):
+                if td <= ref_date and td in date_map and sid in date_map[td]:
+                    price_row = date_map[td][sid]
+                    break
+        if not price_row:
+            _score_cache[cache_key] = None
+            return None
+
+        # 获取 ref_date 当天或之前最近的财务数据
+        fin_list = financials_by_stock.get(sid, [])
+        latest_fin = None
+        for fm in fin_list:
+            # 报告期 <= ref_date 才可用
+            try:
+                fm_date = date.fromisoformat(fm.report_period[:10]) if fm.report_period else None
+                if fm_date and fm_date <= ref_date:
+                    latest_fin = fm
+            except (ValueError, IndexError):
+                continue
+
+        # 获取 ref_date 当天或之前最近的技术指标
+        tech_list = techs_by_stock.get(sid, [])
+        latest_tech = None
+        for ti in tech_list:
+            if ti.trade_date <= ref_date:
+                latest_tech = ti
             else:
                 break
-        return best if best is not None else 50.0
+
+        # 计算评分
+        try:
+            from app.services.scoring import (
+                calculate_quality_score,
+                calculate_valuation_score,
+                calculate_growth_score,
+                calculate_trend_score,
+                calculate_risk_score,
+            )
+
+            if not latest_fin:
+                _score_cache[cache_key] = None
+                return None
+
+            q_score, _ = calculate_quality_score(latest_fin)
+            v_score, _ = calculate_valuation_score(price_row, latest_fin)
+            g_score, _ = calculate_growth_score(latest_fin)
+            t_score, _ = calculate_trend_score(price_row, latest_tech)
+            r_score, _ = calculate_risk_score(latest_fin, price_row, latest_tech)
+
+            total = q_score + v_score + g_score + t_score + r_score
+            _score_cache[cache_key] = total
+            return total
+        except Exception:
+            _score_cache[cache_key] = None
+            return None
 
     # 确定调仓频率
     if rebalance == "quarterly":
@@ -130,12 +230,32 @@ def run_backtest(
     monthly_returns = []
     trade_log = []
 
-    # 基准：等权持有所有股票
-    benchmark_start_prices = {}
+    # 基准：市值加权（用总市值作为权重，近似沪深300/恒生指数）
+    # 获取首日各股市值作为权重
+    benchmark_weights = {}  # sid -> weight (0-1)
     first_date = trade_dates[0]
+    first_prices = date_map.get(first_date, {})
+    total_market_cap = 0
     for sid in stock_ids:
-        if sid in date_map.get(first_date, {}):
-            benchmark_start_prices[sid] = date_map[first_date][sid].close
+        if sid in first_prices:
+            mc = first_prices[sid].market_cap or 1.0  # 无市值数据的用 1 作为 fallback
+            benchmark_weights[sid] = mc
+            total_market_cap += mc
+    # 归一化权重
+    if total_market_cap > 0:
+        for sid in benchmark_weights:
+            benchmark_weights[sid] /= total_market_cap
+
+    # 基准起始价格（用于计算收益率）
+    benchmark_start_prices = {}
+    for sid in stock_ids:
+        if sid in first_prices:
+            benchmark_start_prices[sid] = first_prices[sid].close
+
+    # 记录上一个已知价格（用于填充缺失数据）
+    last_known_prices: dict[int, float] = {}
+    for sid, sp in benchmark_start_prices.items():
+        last_known_prices[sid] = sp
 
     last_rebalance_idx = 0
     prev_equity = initial_capital
@@ -144,23 +264,24 @@ def run_backtest(
     for i, td in enumerate(trade_dates):
         day_prices = date_map.get(td, {})
 
+        # 更新已知价格（填充缺失数据）
+        for sid in stock_ids:
+            if sid in day_prices:
+                last_known_prices[sid] = day_prices[sid].close
+
         # 计算当前持仓市值
         portfolio_value = cash
         for sid, pos in positions.items():
-            if sid in day_prices:
-                portfolio_value += pos["shares"] * day_prices[sid].close
-            else:
-                portfolio_value += pos["shares"] * pos["cost_price"]
+            price = last_known_prices.get(sid, pos["cost_price"])
+            portfolio_value += pos["shares"] * price
 
-        # 计算基准市值（等权）
+        # 计算基准市值（市值加权，用最新已知价格）
         benchmark_value = 0
-        benchmark_count = 0
-        for sid, start_price in benchmark_start_prices.items():
-            if sid in day_prices:
-                ratio = day_prices[sid].close / start_price
-                benchmark_value += (initial_capital / len(benchmark_start_prices)) * ratio
-                benchmark_count += 1
-        if benchmark_count == 0:
+        for sid, weight in benchmark_weights.items():
+            if sid in benchmark_start_prices and sid in last_known_prices:
+                ratio = last_known_prices[sid] / benchmark_start_prices[sid]
+                benchmark_value += initial_capital * weight * ratio
+        if benchmark_value == 0:
             benchmark_value = initial_capital
 
         equity_curve.append({
@@ -175,12 +296,14 @@ def run_backtest(
 
             # 按评分排序，选前 N 只（使用回测时点的评分，消除前瞻偏差）
             scored = [(sid, _get_score_at_date(sid, td)) for sid in stock_ids if sid in day_prices]
+            # 排除无评分的股票（评分为 None）
+            scored = [(sid, sc) for sid, sc in scored if sc is not None]
             scored.sort(key=lambda x: x[1], reverse=True)
 
-            # 选评分 >= 65 的股票（买入/加仓级别）
-            target_stocks = [(sid, sc) for sid, sc in scored if sc >= 65]
-            if not target_stocks:
-                target_stocks = scored[:5]  # 至少保留 5 只
+            # 选评分 >= 65 的股票（买入/加仓级别），最多持仓 20 只
+            target_stocks = [(sid, sc) for sid, sc in scored if sc >= 65][:20]
+            if not target_stocks and scored:
+                target_stocks = scored[:5]  # 至少保留 5 只（但只在有评分数据时）
 
             # 卖出不在目标列表中的持仓
             to_sell = [sid for sid in positions if sid not in {s[0] for s in target_stocks}]
@@ -236,7 +359,7 @@ def run_backtest(
                 current_value = positions[sid]["shares"] * price if sid in positions else 0
                 diff = target_value_per - current_value
 
-                if diff > price * 100:  # 至少 1 手（100 股）
+                if diff >= price * 100:  # 至少 1 手（100 股）
                     shares_to_buy = int(diff / price / 100) * 100  # 整手
                     if shares_to_buy > 0:
                         buy_amount = shares_to_buy * price
@@ -379,7 +502,7 @@ def simulate_portfolio(
     if not holdings:
         return {"error": "持仓列表为空"}
 
-    # 解析持仓，获取买入价格
+    # 解析持仓，获取买入/卖出价格
     positions = []
     total_invested = 0
     earliest_date = None
@@ -392,6 +515,10 @@ def simulate_portfolio(
         buy_date = date.fromisoformat(h["buy_date"])
         if earliest_date is None or buy_date < earliest_date:
             earliest_date = buy_date
+
+        sell_date = date.fromisoformat(h["sell_date"]) if h.get("sell_date") else None
+        if sell_date and earliest_date and sell_date < earliest_date:
+            earliest_date = sell_date
 
         # 获取买入日的价格
         buy_price_row = (
@@ -408,6 +535,20 @@ def simulate_portfolio(
         cost = buy_price * h["shares"]
         total_invested += cost
 
+        # 获取卖出价（如有）
+        sell_price = None
+        actual_sell_date = None
+        if sell_date:
+            sell_row = (
+                db.query(DailyPrice)
+                .filter(DailyPrice.stock_id == stock.id, DailyPrice.trade_date >= sell_date)
+                .order_by(DailyPrice.trade_date)
+                .first()
+            )
+            if sell_row:
+                sell_price = sell_row.close
+                actual_sell_date = sell_row.trade_date
+
         positions.append({
             "symbol": stock.symbol,
             "name": stock.name,
@@ -416,6 +557,8 @@ def simulate_portfolio(
             "buy_price": round(buy_price, 2),
             "shares": h["shares"],
             "cost": round(cost, 2),
+            "sell_date": str(actual_sell_date) if actual_sell_date else None,
+            "sell_price": round(sell_price, 2) if sell_price else None,
         })
 
     # 获取从最早买入日到最新日的所有价格数据
@@ -473,15 +616,31 @@ def simulate_portfolio(
     prev_equity = total_invested
     prev_benchmark = total_invested
 
+    # 跟踪已卖出的持仓和卖出所得现金
+    sold_positions: dict[int, dict] = {}  # stock_id -> {sell_date, sell_price, proceeds}
+    cash_from_sales = 0.0
+
     for td in trade_dates:
         day_prices = date_map.get(td, {})
 
-        # 计算当日组合市值
-        portfolio_value = 0
+        # 检查是否有持仓在今天卖出
         for pos in positions:
             sid = pos["stock_id"]
+            if pos["sell_date"] and sid not in sold_positions:
+                sell_d = date.fromisoformat(pos["sell_date"])
+                if td >= sell_d:
+                    sell_p = pos["sell_price"] or (day_prices[sid].close if sid in day_prices else pos["buy_price"])
+                    proceeds = sell_p * pos["shares"]
+                    cash_from_sales += proceeds
+                    sold_positions[sid] = {"sell_date": pos["sell_date"], "sell_price": sell_p, "proceeds": proceeds}
+
+        # 计算当日组合市值（未卖出的持仓 + 卖出所得现金）
+        portfolio_value = cash_from_sales
+        for pos in positions:
+            sid = pos["stock_id"]
+            if sid in sold_positions:
+                continue  # 已卖出，不再计入持仓市值
             if sid in day_prices:
-                # 用买入日之后的价格
                 if td >= date.fromisoformat(pos["buy_date"]):
                     portfolio_value += pos["shares"] * day_prices[sid].close
                 else:
@@ -549,29 +708,54 @@ def simulate_portfolio(
     holding_details = []
     for pos in positions:
         sid = pos["stock_id"]
-        latest_price_row = (
-            db.query(DailyPrice)
-            .filter(DailyPrice.stock_id == sid)
-            .order_by(DailyPrice.trade_date.desc())
-            .first()
-        )
-        current_price = latest_price_row.close if latest_price_row else pos["buy_price"]
-        current_val = current_price * pos["shares"]
-        pnl = current_val - pos["cost"]
-        pnl_pct = pnl / pos["cost"] * 100 if pos["cost"] > 0 else 0
+        sold = sold_positions.get(sid)
 
-        holding_details.append({
-            "symbol": pos["symbol"],
-            "name": pos["name"],
-            "buy_date": pos["buy_date"],
-            "buy_price": pos["buy_price"],
-            "shares": pos["shares"],
-            "cost": pos["cost"],
-            "current_price": round(current_price, 2),
-            "current_value": round(current_val, 2),
-            "pnl": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2),
-        })
+        if sold:
+            # 已卖出的持仓
+            sell_price = sold["sell_price"]
+            proceeds = sold["proceeds"]
+            pnl = proceeds - pos["cost"]
+            pnl_pct = pnl / pos["cost"] * 100 if pos["cost"] > 0 else 0
+            holding_details.append({
+                "symbol": pos["symbol"],
+                "name": pos["name"],
+                "buy_date": pos["buy_date"],
+                "buy_price": pos["buy_price"],
+                "shares": pos["shares"],
+                "cost": pos["cost"],
+                "current_price": round(sell_price, 2),
+                "current_value": round(proceeds, 2),
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "sell_date": sold["sell_date"],
+                "sold": True,
+            })
+        else:
+            # 仍持有的持仓
+            latest_price_row = (
+                db.query(DailyPrice)
+                .filter(DailyPrice.stock_id == sid)
+                .order_by(DailyPrice.trade_date.desc())
+                .first()
+            )
+            current_price = latest_price_row.close if latest_price_row else pos["buy_price"]
+            current_val = current_price * pos["shares"]
+            pnl = current_val - pos["cost"]
+            pnl_pct = pnl / pos["cost"] * 100 if pos["cost"] > 0 else 0
+            holding_details.append({
+                "symbol": pos["symbol"],
+                "name": pos["name"],
+                "buy_date": pos["buy_date"],
+                "buy_price": pos["buy_price"],
+                "shares": pos["shares"],
+                "cost": pos["cost"],
+                "current_price": round(current_price, 2),
+                "current_value": round(current_val, 2),
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "sell_date": None,
+                "sold": False,
+            })
 
     return {
         "total_invested": round(total_invested, 2),
