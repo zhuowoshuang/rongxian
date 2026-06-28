@@ -70,7 +70,7 @@ CORE_STOCKS = get_all_stocks()
 def seed(force: bool = False):
     """执行数据种子 - 使用真实东方财富数据"""
     print("=" * 60)
-    print("清数智算 数据初始化 (东方财富真实数据)")
+    print("清算 数据初始化 (东方财富真实数据)")
     print("=" * 60)
 
     Base.metadata.create_all(bind=engine)

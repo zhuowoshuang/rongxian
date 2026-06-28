@@ -31,7 +31,7 @@ def _get_or_generate_secret() -> str:
 
 class Settings(BaseSettings):
     # 应用配置
-    APP_NAME: str = "清数智算"
+    APP_NAME: str = "清算"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
 

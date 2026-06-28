@@ -1,5 +1,5 @@
 """
-个股深度分析报告生成模块 — 清数智算量化分析系统
+个股深度分析报告生成模块 — 清算量化分析系统
 从20年华尔街投资专家视角生成专业级个股研究报告
 """
 from datetime import date, datetime
@@ -663,9 +663,9 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
 
 ---
 
-> **免责声明:** 本报告由清数智算量化分析系统自动生成，基于 {report_date} 公开市场数据和多维量化评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
+> **免责声明:** 本报告由清算量化分析系统自动生成，基于 {report_date} 公开市场数据和多维量化评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
 
-*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清数智算量化分析系统 v2.0*
+*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清算量化分析系统 v2.0*
 """
 
     # AI 个股深度分析（DeepSeek）

@@ -91,7 +91,7 @@ export default function Sidebar() {
             <div className="flex items-center gap-3">
               <img
                 src="/brand/qingshu-icon-logo.png"
-                alt="清数智算"
+                alt="清算"
                 width={40}
                 height={40}
                 className="rounded-lg flex-shrink-0"
@@ -105,7 +105,7 @@ export default function Sidebar() {
           ) : (
             <img
               src="/brand/qingshu-icon-logo.png"
-              alt="清数智算"
+              alt="清算"
               width={32}
               height={32}
               className="rounded-lg mx-auto flex-shrink-0"
