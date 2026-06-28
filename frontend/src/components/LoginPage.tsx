@@ -18,7 +18,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return; // 防止重复提交（H-11 竞态条件修复）
+    if (loading) return;
     setError("");
     setLoading(true);
     try {
@@ -27,40 +27,39 @@ export default function LoginPage() {
       } else {
         await register(username, password, displayName);
       }
-    } catch (err: any) {
-      setError(err.message || t("auth.error"));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t("auth.error"));
     }
     setLoading(false);
   };
 
-  const fillAccount = (u: string, p: string) => {
+  const fillAccount = (u: string) => {
     setUsername(u);
-    setPassword(p);
     setError("");
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: "var(--background)" }}>
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: "var(--bg-page)" }}>
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-500/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-200/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary-300/20 rounded-full blur-3xl" />
       </div>
 
       <div className="w-full max-w-md px-4 relative z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-500/20">
+          <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <Shield className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">{t("app.name")}</h1>
-          <p className="text-dark-muted mt-2 text-sm">{t("app.description")}</p>
+          <h1 className="text-3xl font-bold text-[var(--text-heading)] tracking-tight">{t("app.name")}</h1>
+          <p className="text-[var(--text-muted)] mt-2 text-sm">{t("app.description")}</p>
         </div>
 
         <div className="card p-8">
-          <div className="flex mb-6 bg-white/[0.03] rounded-xl p-1 border border-white/[0.06]">
+          <div className="flex mb-6 bg-[var(--bg-surface)] rounded-xl p-1 border border-[var(--border-default)]">
             <button
               onClick={() => { setMode("login"); setError(""); }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                mode === "login" ? "bg-primary-500/20 text-primary-400 border border-primary-500/30" : "text-dark-muted"
+                mode === "login" ? "bg-white text-primary-700 shadow-sm font-semibold" : "text-[var(--text-muted)]"
               }`}
             >
               {t("auth.login")}
@@ -68,7 +67,7 @@ export default function LoginPage() {
             <button
               onClick={() => { setMode("register"); setError(""); }}
               className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                mode === "register" ? "bg-primary-500/20 text-primary-400 border border-primary-500/30" : "text-dark-muted"
+                mode === "register" ? "bg-white text-primary-700 shadow-sm font-semibold" : "text-[var(--text-muted)]"
               }`}
             >
               {t("auth.register")}
@@ -77,7 +76,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-xs text-dark-muted font-medium">{t("auth.username")}</label>
+              <label className="text-xs text-[var(--text-secondary)] font-medium">{t("auth.username")}</label>
               <input
                 type="text"
                 value={username}
@@ -90,7 +89,7 @@ export default function LoginPage() {
 
             {mode === "register" && (
               <div>
-                <label className="text-xs text-dark-muted font-medium">{t("auth.displayName")}</label>
+                <label className="text-xs text-[var(--text-secondary)] font-medium">{t("auth.displayName")}</label>
                 <input
                   type="text"
                   value={displayName}
@@ -102,7 +101,7 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className="text-xs text-dark-muted font-medium">{t("auth.password")}</label>
+              <label className="text-xs text-[var(--text-secondary)] font-medium">{t("auth.password")}</label>
               <div className="relative mt-1">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -115,7 +114,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted hover:text-dark-text"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -123,8 +122,8 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400 flex items-center gap-2">
-                <span className="text-red-500 font-bold">!</span>
+              <div className="p-3 rounded-xl text-sm flex items-center gap-2 card-danger">
+                <span className="font-bold">!</span>
                 {error}
               </div>
             )}
@@ -132,7 +131,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full btn-primary py-3 disabled:opacity-50"
+              className="w-full btn-primary py-3"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -146,26 +145,27 @@ export default function LoginPage() {
           </form>
 
           {process.env.NODE_ENV === "development" && (
-            <div className="mt-6 pt-5 border-t border-white/[0.06]">
-              <p className="text-xs text-dark-muted text-center mb-3">{t("auth.quickLogin")}</p>
+            <div className="mt-6 pt-5 border-t border-[var(--border-default)]">
+              <p className="text-xs text-[var(--text-muted)] text-center mb-2">{t("auth.quickLogin")}</p>
+              <p className="text-[11px] text-[var(--color-warning)] text-center mb-3">仅开发环境显示用户名快捷填充</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { u: "admin", p: "admin123", r: t("auth.admin"), color: "text-purple-400 bg-purple-500/10" },
-                  { u: "demo", p: "demo123", r: t("auth.demo"), color: "text-blue-400 bg-blue-500/10" },
-                  { u: "analyst", p: "analyst123", r: t("auth.analyst"), color: "text-emerald-400 bg-emerald-500/10" },
-                  { u: "guest", p: "guest123", r: t("auth.guest"), color: "text-gray-400 bg-gray-500/10" },
+                  { u: "admin", r: t("auth.admin"), color: "text-primary-700 bg-primary-50" },
+                  { u: "demo", r: t("auth.demo"), color: "text-blue-700 bg-blue-50" },
+                  { u: "analyst", r: t("auth.analyst"), color: "text-emerald-700 bg-emerald-50" },
+                  { u: "guest", r: t("auth.guest"), color: "text-gray-600 bg-gray-100" },
                 ].map((acc) => (
                   <button
                     key={acc.u}
                     type="button"
-                    onClick={() => fillAccount(acc.u, acc.p)}
-                    className="p-2.5 rounded-xl transition-all text-left border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.1]"
+                    onClick={() => fillAccount(acc.u)}
+                    className="p-2.5 rounded-xl transition-all text-left border border-[var(--border-default)] hover:bg-[var(--bg-surface)] hover:border-primary-300"
                   >
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${acc.color}`}>{acc.r}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${acc.color}`}>{acc.r}</span>
                     </div>
-                    <p className="text-xs font-medium text-dark-text mt-1">{acc.u}</p>
-                    <p className="text-[10px] text-dark-muted">{acc.p}</p>
+                    <p className="text-xs font-medium text-[var(--text-primary)] mt-1">{acc.u}</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">点击填充账号名</p>
                   </button>
                 ))}
               </div>
@@ -173,7 +173,7 @@ export default function LoginPage() {
           )}
         </div>
 
-        <p className="text-center text-xs text-white/20 mt-6">
+        <p className="text-center text-xs text-[var(--text-muted)] mt-6">
           {t("app.disclaimer")}
         </p>
       </div>

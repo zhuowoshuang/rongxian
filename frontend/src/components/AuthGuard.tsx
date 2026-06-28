@@ -18,7 +18,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-dark-bg">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-page)" }}>
       <Sidebar />
       <main className={`flex-1 transition-all duration-300 ${collapsed ? "ml-16" : "ml-60"}`}>
         {children}

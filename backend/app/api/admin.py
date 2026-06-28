@@ -1,5 +1,6 @@
 """管理员 API"""
 import os
+import time
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.api_config import ApiConfig, UserApiQuota, ApiCallLog
 from app.api.auth import get_current_admin
+from app.services.system_status import build_system_status
 
 router = APIRouter(prefix="/api/admin", tags=["管理"])
 
@@ -59,6 +61,12 @@ def get_stats(admin: User = Depends(get_current_admin), db: Session = Depends(ge
     }
 
 
+@router.get("/system-status")
+def get_system_status(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """管理员系统健康与数据新鲜度视图。"""
+    return build_system_status(db)
+
+
 @router.get("/users")
 def list_users(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """列出所有用户"""
@@ -91,6 +99,7 @@ def update_user(user_id: int, req: UserUpdateRequest, admin: User = Depends(get_
     if req.is_active is not None:
         user.is_active = req.is_active
     db.commit()
+    log_api_call(db, admin.id, admin.username, "system", f"/api/admin/users/{user_id}", "PUT", 200, 0, None)
     return {"status": "ok", "message": "用户已更新"}
 
 
@@ -104,6 +113,7 @@ def disable_user(user_id: int, admin: User = Depends(get_current_admin), db: Ses
         raise HTTPException(status_code=400, detail="不能禁用自己")
     user.is_active = False
     db.commit()
+    log_api_call(db, admin.id, admin.username, "system", f"/api/admin/users/{user_id}", "DELETE", 200, 0, None)
     return {"status": "ok", "message": "用户已禁用"}
 
 
@@ -223,6 +233,8 @@ def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get
     """创建或更新API配置"""
     from app.core.config import encrypt_api_key
 
+    start_time = time.time()
+
     existing = db.query(ApiConfig).filter(ApiConfig.provider == req.provider).first()
     if existing:
         if req.display_name is not None: existing.display_name = req.display_name
@@ -234,6 +246,7 @@ def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get
         if req.rate_limit is not None: existing.rate_limit = req.rate_limit
         if req.config_json is not None: existing.config_json = req.config_json
         db.commit()
+        log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{existing.id}", "POST", 200, int((time.time() - start_time) * 1000), None)
         return {"status": "ok", "message": f"{req.provider} 配置已更新", "id": existing.id}
     else:
         config = ApiConfig(
@@ -250,23 +263,29 @@ def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get
         db.add(config)
         db.commit()
         db.refresh(config)
+        log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config.id}", "POST", 200, int((time.time() - start_time) * 1000), None)
         return {"status": "ok", "message": f"{req.provider} 配置已创建", "id": config.id}
 
 
 @router.delete("/api-configs/{config_id}")
 def delete_api_config(config_id: int, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """删除API配置"""
+    import time
+    start_time = time.time()
     config = db.query(ApiConfig).filter(ApiConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="配置不存在")
+    provider = config.provider
     db.delete(config)
     db.commit()
-    return {"status": "ok", "message": f"{config.provider} 配置已删除"}
+    log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}", "DELETE", 200, int((time.time() - start_time) * 1000), None)
+    return {"status": "ok", "message": f"{provider} 配置已删除"}
 
 
 @router.post("/api-configs/{config_id}/test")
 def test_api_config(config_id: int, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """测试API连接"""
+    start_time = time.time()
     config = db.query(ApiConfig).filter(ApiConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="配置不存在")
@@ -278,19 +297,33 @@ def test_api_config(config_id: int, admin: User = Depends(get_current_admin), db
             resp = requests.get("https://push2.eastmoney.com/api/qt/clist/get", timeout=5,
                                 params={"pn": 1, "pz": 1, "fs": "m:1+t:2", "fields": "f12,f14"})
             if resp.status_code == 200:
+                log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", 200, int((time.time() - start_time) * 1000), None)
                 return {"status": "ok", "message": "东方财富API连接正常"}
+            message = f"连接失败: HTTP {resp.status_code}"
+            log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", resp.status_code, int((time.time() - start_time) * 1000), message)
+            return {"status": "error", "message": message}
         except Exception as e:
-            return {"status": "error", "message": f"连接失败: {str(e)}"}
+            message = f"连接失败: {str(e)}"
+            log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", 500, int((time.time() - start_time) * 1000), message)
+            return {"status": "error", "message": message}
     elif config.provider == "yahoo":
         try:
             import requests
             resp = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/000001.SS", timeout=5)
             if resp.status_code == 200:
+                log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", 200, int((time.time() - start_time) * 1000), None)
                 return {"status": "ok", "message": "Yahoo Finance连接正常"}
+            message = f"连接失败: HTTP {resp.status_code}"
+            log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", resp.status_code, int((time.time() - start_time) * 1000), message)
+            return {"status": "error", "message": message}
         except Exception as e:
-            return {"status": "error", "message": f"连接失败: {str(e)}"}
+            message = f"连接失败: {str(e)}"
+            log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", 500, int((time.time() - start_time) * 1000), message)
+            return {"status": "error", "message": message}
     else:
-        return {"status": "ok", "message": f"{config.provider} 暂不支持自动测试"}
+        message = f"{config.provider} 暂不支持自动测试"
+        log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{config_id}/test", "POST", 200, int((time.time() - start_time) * 1000), message)
+        return {"status": "ok", "message": message}
 
 
 def _mask_key(key: str) -> str:
@@ -813,3 +846,67 @@ def admin_delete_signal(signal_id: int, admin: User = Depends(get_current_admin)
     db.delete(sig)
     db.commit()
     return {"status": "ok", "message": "信号已删除"}
+def _log_to_summary(log: ApiCallLog | None) -> dict | None:
+    if not log:
+        return None
+    return {
+        "time": str(log.called_at) if log.called_at else None,
+        "actor": log.username or "system",
+        "status": "error" if (log.status_code or 0) >= 400 else "ok",
+        "duration_ms": log.response_time or 0,
+        "summary": log.endpoint,
+        "error": log.error_msg,
+        "status_code": log.status_code,
+    }
+
+
+@router.get("/operation-logs")
+def get_operation_logs(
+    limit: int = Query(30, ge=1, le=100),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    logs = db.query(ApiCallLog).order_by(ApiCallLog.called_at.desc()).limit(limit).all()
+    items = []
+    for log in logs:
+        endpoint = log.endpoint or ""
+        if "/backtest/" in endpoint:
+            log_type = "backtest"
+        elif "/reports/" in endpoint and endpoint.endswith("/pdf"):
+            log_type = "report_export"
+        elif "/reports/" in endpoint:
+            log_type = "report_generate"
+        elif "/stocks/sync" in endpoint:
+            log_type = "stock_sync"
+        elif "/admin/" in endpoint:
+            log_type = "admin_action"
+        else:
+            log_type = "system"
+        items.append(
+            {
+                "time": str(log.called_at) if log.called_at else None,
+                "type": log_type,
+                "status": "error" if (log.status_code or 0) >= 400 else "ok",
+                "actor": log.username or "system",
+                "duration_ms": log.response_time or 0,
+                "summary": endpoint,
+                "error": log.error_msg,
+                "status_code": log.status_code,
+            }
+        )
+    return {"items": items}
+
+
+@router.get("/operation-logs/summary")
+def get_operation_log_summary(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    def latest_like(pattern: str):
+        return db.query(ApiCallLog).filter(ApiCallLog.endpoint.like(pattern)).order_by(ApiCallLog.called_at.desc()).first()
+
+    return {
+        "latest_stock_sync": _log_to_summary(latest_like("%/stocks/sync%")),
+        "latest_report_generate": _log_to_summary(latest_like("/api/reports/generate%")),
+        "latest_pdf_export": _log_to_summary(latest_like("/api/reports/%/pdf")),
+        "latest_backtest": _log_to_summary(latest_like("/api/backtest/%")),
+        "latest_error": _log_to_summary(db.query(ApiCallLog).filter(ApiCallLog.status_code >= 400).order_by(ApiCallLog.called_at.desc()).first()),
+        "latest_admin_action": _log_to_summary(latest_like("/api/admin/%")),
+    }

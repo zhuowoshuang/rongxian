@@ -35,11 +35,11 @@ export default class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback;
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-dark-900 p-6">
+        <div className="min-h-screen flex items-center justify-center bg-[var(--bg-page)] p-6">
           <div className="max-w-md w-full card p-8 text-center">
             <div className="text-5xl mb-4">⚠️</div>
-            <h2 className="text-xl font-bold text-white mb-2">页面出现错误</h2>
-            <p className="text-gray-400 text-sm mb-6">
+            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">页面出现错误</h2>
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
               {this.state.error?.message || "发生了一个意外错误"}
             </p>
             <div className="flex gap-3 justify-center">
@@ -51,7 +51,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 onClick={() => (window.location.href = "/dashboard")}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg transition-colors text-sm"
+                className="px-4 py-2 border border-[var(--border-default)] bg-white hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] rounded-lg transition-colors text-sm"
               >
                 返回首页
               </button>

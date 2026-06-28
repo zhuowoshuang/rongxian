@@ -1,64 +1,60 @@
-"""
-信号生成服务
-根据评分结果生成交易信号
-"""
-from typing import Optional
+"""Signal generation service based on database scores."""
+
+from __future__ import annotations
+
 from datetime import date
+from typing import Optional
+
 from sqlalchemy.orm import Session
 
+from app.core.constants import SignalStatus, SignalType
+from app.models.daily_price import DailyPrice
 from app.models.stock import Stock
 from app.models.stock_score import StockScore
-from app.models.daily_price import DailyPrice
 from app.models.technical_indicator import TechnicalIndicator
 from app.models.trade_signal import TradeSignal
-from app.core.constants import SignalType, SignalStatus
+from app.services.compliance import sanitize_research_text, signal_display_label
 
 
 def determine_signal_type(score: StockScore) -> tuple[str, int, str]:
-    """
-    根据评分确定信号类型、强度和逻辑说明
-    Returns: (signal_type, signal_strength, logic_text)
-    """
-    # BUY: total_score >= 85, quality >= 24, valuation >= 14, trend >= 14
-    if (score.total_score >= 85
-            and score.quality_score >= 24
-            and score.valuation_score >= 14
-            and score.trend_score >= 14):
+    """Determine research-oriented signal label and narrative."""
+    if (
+        score.total_score >= 85
+        and score.quality_score >= 24
+        and score.valuation_score >= 14
+        and score.trend_score >= 14
+    ):
         strength = min(5, int((score.total_score - 80) / 4) + 3)
-        return SignalType.BUY, strength, "基本面优秀，估值合理，趋势确认，建议买入"
+        return SignalType.BUY, strength, "基本面表现较强，估值与趋势匹配，进入高关注研究名单"
 
-    # ADD: total_score >= 75, 趋势确认, 风险分 >= 7
     if score.total_score >= 75 and score.trend_score >= 12 and score.risk_score >= 7:
         strength = min(4, int((score.total_score - 70) / 5) + 2)
-        return SignalType.ADD, strength, "基本面良好，趋势向好，可适当加仓"
+        return SignalType.ADD, strength, "基本面与趋势继续改善，建议增强关注并跟踪后续数据"
 
-    # WATCH: 基本面好但趋势未确认，或估值合理但信号不完整
     if score.total_score >= 65:
         strength = min(3, int((score.total_score - 60) / 5) + 1)
         reasons = []
         if score.quality_score >= 20:
-            reasons.append("基本面良好")
+            reasons.append("基本面维持良好")
         if score.trend_score < 12:
-            reasons.append("趋势待确认")
+            reasons.append("趋势仍待确认")
         if score.valuation_score < 14:
-            reasons.append("估值偏高")
-        logic = "，".join(reasons) if reasons else "综合评分中等"
-        return SignalType.WATCH, strength, f"{logic}，建议观望"
+            reasons.append("估值吸引力有限")
+        logic = "；".join(reasons) if reasons else "综合评分处于中性区间"
+        return SignalType.WATCH, strength, f"{logic}，当前维持观察"
 
-    # REDUCE: 估值过高、趋势转弱、风险升高
     if score.total_score >= 50:
         reasons = []
         if score.valuation_score < 10:
-            reasons.append("估值过高")
+            reasons.append("估值风险上升")
         if score.trend_score < 10:
-            reasons.append("趋势转弱")
+            reasons.append("趋势明显转弱")
         if score.risk_score < 5:
-            reasons.append("风险升高")
-        logic = "，".join(reasons) if reasons else "综合评分偏低"
-        return SignalType.REDUCE, 2, f"{logic}，建议减仓"
+            reasons.append("风险因子恶化")
+        logic = "；".join(reasons) if reasons else "综合评分明显回落"
+        return SignalType.REDUCE, 2, f"{logic}，当前风险升高"
 
-    # SELL: 基本面恶化、评分很低
-    return SignalType.SELL, 1, "基本面恶化或评分极低，建议卖出"
+    return SignalType.SELL, 1, "基本面或风险指标明显恶化，建议回避观察"
 
 
 def calculate_position(
@@ -67,12 +63,6 @@ def calculate_position(
     existing_sector_pct: float = 0.0,
     total_position_pct: float = 0.0,
 ) -> float:
-    """
-    根据信号类型和强度计算建议仓位（含集中度限制）
-    Args:
-        existing_sector_pct: 同行业已持仓占比（0-1）
-        total_position_pct: 当前总仓位占比（0-1）
-    """
     position_map = {
         SignalType.BUY: {5: 8, 4: 6, 3: 5},
         SignalType.ADD: {4: 5, 3: 4, 2: 3},
@@ -83,39 +73,29 @@ def calculate_position(
     base = position_map.get(signal_type, {}).get(signal_strength, 0)
     if base == 0:
         return 0
-
-    # 单行业上限 30%：同行业已超 25% 时减半建议仓位
     if existing_sector_pct > 0.25:
         base = max(1, base // 2)
-
-    # 总仓位上限 90%：已超 85% 时减半建议仓位
     if total_position_pct > 0.85:
         base = max(1, base // 2)
-
     return base
 
 
-def calculate_prices(price: DailyPrice, signal_type: str, tech: Optional[TechnicalIndicator] = None) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """
-    计算入场价、目标价、止损价（波动率自适应）
-    使用布林带宽度或 ATR 估算波动率，动态调整目标和止损
-    """
+def calculate_prices(
+    price: DailyPrice,
+    signal_type: str,
+    tech: Optional[TechnicalIndicator] = None,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
     if not price.close:
         return None, None, None
 
     entry = price.close
-
-    # 基于技术指标估算波动率
-    vol_pct = 0.10  # 默认 10% 波动率
+    vol_pct = 0.10
     if tech and tech.boll_upper and tech.boll_lower and entry > 0:
-        # 布林带宽度作为波动率代理
         boll_width = (tech.boll_upper - tech.boll_lower) / entry
-        vol_pct = max(0.05, min(0.25, boll_width))  # 限制在 5%-25%
+        vol_pct = max(0.05, min(0.25, boll_width))
 
     if signal_type in (SignalType.BUY, SignalType.ADD):
-        # 目标价 = 入场价 * (1 + 2 * 波动率)，至少 10%，最多 30%
         target_mult = max(1.10, min(1.30, 1 + 2 * vol_pct))
-        # 止损价 = 入场价 * (1 - 波动率)，至少 5%，最多 12%
         stop_mult = max(0.88, min(0.95, 1 - vol_pct))
         target = round(entry * target_mult, 2)
         stop_loss = round(entry * stop_mult, 2)
@@ -129,12 +109,7 @@ def calculate_prices(price: DailyPrice, signal_type: str, tech: Optional[Technic
     return entry, target, stop_loss
 
 
-def generate_signal_for_stock(
-    db: Session,
-    stock_id: int,
-    signal_date: date,
-) -> Optional[TradeSignal]:
-    """为单只股票生成交易信号"""
+def generate_signal_for_stock(db: Session, stock_id: int, signal_date: date) -> Optional[TradeSignal]:
     score = (
         db.query(StockScore)
         .filter(StockScore.stock_id == stock_id, StockScore.score_date == signal_date)
@@ -152,7 +127,6 @@ def generate_signal_for_stock(
     if not price:
         return None
 
-    # 获取 signal_date 当日或之前的技术指标（用于波动率自适应目标价/止损价）
     tech = (
         db.query(TechnicalIndicator)
         .filter(TechnicalIndicator.stock_id == stock_id, TechnicalIndicator.trade_date <= signal_date)
@@ -162,48 +136,43 @@ def generate_signal_for_stock(
 
     signal_type, strength, logic = determine_signal_type(score)
 
-    # 计算持仓集中度（用于仓位限制）
     stock = db.query(Stock).filter(Stock.id == stock_id).first()
     existing_sector_pct = 0.0
     total_position_pct = 0.0
     if stock and stock.industry:
-        # 同行业已有的活跃信号数量 / 总活跃信号数量
         active_signals = db.query(TradeSignal).filter(
             TradeSignal.signal_date == signal_date,
             TradeSignal.status == "ACTIVE",
             TradeSignal.signal_type.in_(["BUY", "ADD"]),
         ).count()
         if active_signals > 0:
-            # 同行业信号数（简化：用信号数近似仓位占比）
             sector_signal_count = db.query(TradeSignal).join(Stock).filter(
                 TradeSignal.signal_date == signal_date,
                 TradeSignal.status == "ACTIVE",
                 TradeSignal.signal_type.in_(["BUY", "ADD"]),
                 Stock.industry == stock.industry,
             ).count()
-            existing_sector_pct = sector_signal_count / (active_signals + 5)  # +5 避免除零
-            total_position_pct = min(0.9, active_signals * 0.06)  # 每只约 6% 仓位
+            existing_sector_pct = sector_signal_count / (active_signals + 5)
+            total_position_pct = min(0.9, active_signals * 0.06)
 
     position = calculate_position(signal_type, strength, existing_sector_pct, total_position_pct)
     entry, target, stop_loss = calculate_prices(price, signal_type, tech)
 
-    # 持有期建议
     holding_map = {
         SignalType.BUY: "3-6个月",
         SignalType.ADD: "2-4个月",
         SignalType.WATCH: "-",
-        SignalType.REDUCE: "逐步减仓",
-        SignalType.SELL: "立即",
+        SignalType.REDUCE: "逐步降低关注",
+        SignalType.SELL: "尽快复核",
     }
 
-    # 风险提示
     risk_items = []
     if score.risk_score < 5:
         risk_items.append("风险评分较低")
     if score.valuation_score < 10:
-        risk_items.append("估值偏高")
+        risk_items.append("估值吸引力偏弱")
     if score.trend_score < 10:
-        risk_items.append("趋势偏弱")
+        risk_items.append("趋势维度偏弱")
 
     logic_json = {
         "total_score": score.total_score,
@@ -212,11 +181,12 @@ def generate_signal_for_stock(
         "growth_score": score.growth_score,
         "trend_score": score.trend_score,
         "risk_score": score.risk_score,
-        "reason": logic,
+        "reason": sanitize_research_text(logic),
+        "rating_label": signal_display_label(signal_type),
+        "data_source": "数据库评分与信号规则",
     }
-    risk_json = {"items": risk_items if risk_items else ["暂无重大风险"]}
+    risk_json = {"items": risk_items if risk_items else ["当前未发现重大风险项"]} 
 
-    # 更新或创建信号
     existing = (
         db.query(TradeSignal)
         .filter(TradeSignal.stock_id == stock_id, TradeSignal.signal_date == signal_date)
@@ -256,21 +226,19 @@ def generate_signal_for_stock(
 
 
 def generate_all_signals(db: Session, signal_date: date) -> list[TradeSignal]:
-    """为所有已评分股票生成信号"""
     scores = db.query(StockScore).filter(StockScore.score_date == signal_date).all()
     results = []
-    for s in scores:
-        sig = generate_signal_for_stock(db, s.stock_id, signal_date)
-        if sig:
-            results.append(sig)
+    for score in scores:
+        signal = generate_signal_for_stock(db, score.stock_id, signal_date)
+        if signal:
+            results.append(signal)
     return results
 
 
 def get_signal_distribution(db: Session, signal_date: date) -> dict:
-    """获取信号分布统计"""
     signals = db.query(TradeSignal).filter(TradeSignal.signal_date == signal_date).all()
-    dist = {"BUY": 0, "ADD": 0, "WATCH": 0, "REDUCE": 0, "SELL": 0}
-    for s in signals:
-        if s.signal_type in dist:
-            dist[s.signal_type] += 1
-    return dist
+    distribution = {"BUY": 0, "ADD": 0, "WATCH": 0, "REDUCE": 0, "SELL": 0}
+    for signal in signals:
+        if signal.signal_type in distribution:
+            distribution[signal.signal_type] += 1
+    return distribution

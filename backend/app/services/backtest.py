@@ -36,6 +36,37 @@ from app.models.financial_metric import FinancialMetric
 from app.models.technical_indicator import TechnicalIndicator
 
 
+def get_backtest_metadata(db: Session, market: str) -> dict:
+    stock_ids = db.query(Stock.id).filter(Stock.market == market).subquery()
+    earliest = db.query(func.min(DailyPrice.trade_date)).filter(DailyPrice.stock_id.in_(stock_ids)).scalar()
+    latest = db.query(func.max(DailyPrice.trade_date)).filter(DailyPrice.stock_id.in_(stock_ids)).scalar()
+    sample_count = db.query(Stock).filter(Stock.market == market).count()
+    trade_day_count = db.query(func.count(func.distinct(DailyPrice.trade_date))).filter(DailyPrice.stock_id.in_(stock_ids)).scalar() or 0
+    price_count = db.query(DailyPrice).filter(DailyPrice.stock_id.in_(stock_ids)).count()
+    return {
+        "market": market,
+        "earliest_date": str(earliest) if earliest else None,
+        "latest_date": str(latest) if latest else None,
+        "trade_day_count": trade_day_count,
+        "sample_count": sample_count,
+        "price_count": price_count,
+        "fees": {
+            "commission_rate": COMMISSION_RATE,
+            "stamp_duty_rate": STAMP_DUTY_RATE,
+            "transfer_fee_rate": TRANSFER_FEE_RATE,
+            "min_commission": MIN_COMMISSION,
+            "slippage_rate": SLIPPAGE_RATE,
+        },
+        "assumptions": {
+            "has_slippage": True,
+            "has_commission": True,
+            "handles_limit_lock": True,
+            "handles_suspension": False,
+            "benchmark": "market_cap_weighted_proxy",
+        },
+    }
+
+
 def run_backtest(
     db: Session,
     strategy: str,

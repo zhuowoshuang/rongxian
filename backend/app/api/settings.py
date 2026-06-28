@@ -7,6 +7,7 @@ from typing import Optional
 from app.db.session import get_db
 from app.models.setting import Setting
 from app.api.auth import get_current_admin, get_current_user
+from app.services.system_status import build_system_status
 
 router = APIRouter(prefix="/api/settings", tags=["设置"])
 
@@ -27,10 +28,21 @@ class NotificationConfig(BaseModel):
 
 
 @router.get("")
-def get_settings(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    """获取所有设置"""
+def get_settings(db: Session = Depends(get_db), user=Depends(get_current_admin)):
+    """获取所有设置，仅管理员可访问，并对敏感值脱敏。"""
     settings = db.query(Setting).all()
-    return {s.key: {"value": s.value, "description": s.description} for s in settings}
+    sensitive_keys = {"email_password", "feishu_webhook", "api_key", "api_secret", "token", "secret"}
+    result = {}
+    for item in settings:
+        value = "***" if item.key in sensitive_keys and item.value else item.value
+        result[item.key] = {"value": value, "description": item.description}
+    return result
+
+
+@router.get("/runtime-info")
+def get_runtime_info(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """获取当前系统健康、数据更新时间和数据模式信息。"""
+    return build_system_status(db)
 
 
 @router.get("/notification")

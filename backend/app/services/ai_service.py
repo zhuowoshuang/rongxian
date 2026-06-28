@@ -38,9 +38,9 @@ def _get_deepseek_config(db) -> Optional[dict]:
     }
 
 
-def _call_deepseek(api_key: str, base_url: str, model: str, prompt: str,
-                    temperature: float = 0.7, max_tokens: int = 2000) -> Optional[str]:
-    """调用 DeepSeek Chat API"""
+def _call_deepseek_sync(api_key: str, base_url: str, model: str, prompt: str,
+                         temperature: float = 0.7, max_tokens: int = 2000) -> Optional[str]:
+    """同步调用 DeepSeek Chat API（在线程池中执行）"""
     url = f"{base_url}/chat/completions"
     payload = json.dumps({
         "model": model,
@@ -57,11 +57,24 @@ def _call_deepseek(api_key: str, base_url: str, model: str, prompt: str,
         "Authorization": f"Bearer {api_key}",
     })
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             return result["choices"][0]["message"]["content"]
     except Exception as e:
         logger.warning(f"DeepSeek API 调用失败: {e}")
+        return None
+
+
+def _call_deepseek(api_key: str, base_url: str, model: str, prompt: str,
+                    temperature: float = 0.7, max_tokens: int = 2000) -> Optional[str]:
+    """调用 DeepSeek Chat API（通过线程池避免阻塞事件循环）"""
+    future = _executor.submit(
+        _call_deepseek_sync, api_key, base_url, model, prompt, temperature, max_tokens
+    )
+    try:
+        return future.result(timeout=35)  # 比 HTTP 超时多 5 秒
+    except Exception as e:
+        logger.warning(f"DeepSeek 线程池调用失败: {e}")
         return None
 
 

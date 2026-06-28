@@ -1,231 +1,557 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { runBacktest, simulatePortfolio, searchStocks } from "@/lib/api";
-import type { BacktestResult, SimulateResult, SimulateHolding } from "@/types";
-import { formatPercent, getChangeColor } from "@/lib/utils";
-import { useTranslation } from "@/lib/i18n";
-import GlassCard from "@/components/ui/GlassCard";
-import TabSwitch from "@/components/ui/TabSwitch";
-import EmptyState from "@/components/ui/EmptyState";
-import TopSearch from "@/components/TopSearch";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
-import { showToast } from "@/components/ui/Toast";
-import { Trash2, Plus, Play, Loader2, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Loader2, Play, Plus, Search, Trash2 } from "lucide-react";
+
+import PageShell from "@/components/layout/PageShell";
 import ChartTooltip from "@/components/ui/ChartTooltip";
+import EmptyState from "@/components/ui/EmptyState";
+import SimulatedDataNotice from "@/components/ui/SimulatedDataNotice";
+import { showToast } from "@/components/ui/Toast";
+import { getBacktestMeta, getRuntimeInfo, runBacktest, searchStocks, simulatePortfolio } from "@/lib/api";
+import {
+  formatNumber,
+  formatPercent,
+  getChangeColor,
+  marketLabel,
+  sanitizeDisplayText,
+} from "@/lib/utils";
+import type { BacktestMeta, BacktestResult, RuntimeInfo, SimulateHolding, SimulateResult, StockSearchResult } from "@/types";
+
+type TabKey = "backtest" | "simulate";
+
+const MARKET_OPTIONS = [
+  { value: "A_SHARE", label: "A股" },
+  { value: "HK", label: "港股" },
+];
+
+const REBALANCE_OPTIONS = [
+  { value: "monthly", label: "月度" },
+  { value: "quarterly", label: "季度" },
+];
+
+function ResultCard({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "positive" | "negative" }) {
+  const className =
+    tone === "positive" ? "text-emerald-600" : tone === "negative" ? "text-red-600" : "text-[var(--text-primary)]";
+  return (
+    <div className="card text-center">
+      <p className="text-xs font-medium text-[var(--text-secondary)]">{label}</p>
+      <p className={`mt-2 text-2xl font-bold ${className}`}>{value}</p>
+    </div>
+  );
+}
 
 export default function BacktestPage() {
-  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<TabKey>("backtest");
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
+  const [meta, setMeta] = useState<BacktestMeta | null>(null);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [metaError, setMetaError] = useState<string | null>(null);
   const [result, setResult] = useState<BacktestResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [simResult, setSimResult] = useState<SimulateResult | null>(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [simLoading, setSimLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchResults, setSearchResults] = useState<StockSearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   const [params, setParams] = useState({
     strategy: "fundamental_medium_long",
     market: "A_SHARE",
-    start_date: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    end_date: new Date().toISOString().split("T")[0],
+    start_date: "",
+    end_date: "",
     rebalance: "monthly",
     initial_capital: 1000000,
   });
 
-  // 模拟买入状态
-  const [activeTab, setActiveTab] = useState("backtest");
-  const [simResult, setSimResult] = useState<SimulateResult | null>(null);
-  const [simLoading, setSimLoading] = useState(false);
+  const [newHolding, setNewHolding] = useState<SimulateHolding>({
+    symbol: "",
+    buy_date: "",
+    shares: 100,
+  });
   const [holdings, setHoldings] = useState<SimulateHolding[]>([]);
-  const [simStockKeyword, setSimStockKeyword] = useState("");
-  const [simStockResults, setSimStockResults] = useState<any[]>([]);
-  const [showSimStockSearch, setShowSimStockSearch] = useState(false);
-  const [newHolding, setNewHolding] = useState<SimulateHolding>({ symbol: "", buy_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], shares: 100 });
-  const simStockSearchRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭下拉
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (simStockSearchRef.current && !simStockSearchRef.current.contains(e.target as Node)) setShowSimStockSearch(false);
+    getRuntimeInfo().then(setRuntime).catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    const loadMeta = async () => {
+      setMetaLoading(true);
+      setMetaError(null);
+      try {
+        const nextMeta = await getBacktestMeta(params.market);
+        setMeta(nextMeta);
+        setParams((current) => ({
+          ...current,
+          start_date: current.start_date || nextMeta.earliest_date || "",
+          end_date: current.end_date || nextMeta.latest_date || "",
+        }));
+        setNewHolding((current) => ({
+          ...current,
+          buy_date: current.buy_date || nextMeta.latest_date || "",
+        }));
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error && err.message.trim() ? err.message : "回测日期范围加载失败，请稍后重试。";
+        setMetaError(message);
+        setMeta(null);
+      } finally {
+        setMetaLoading(false);
+      }
     };
+
+    void loadMeta();
+  }, [params.market]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchResults(false);
+      }
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
-    if (simStockKeyword.length < 1) { setSimStockResults([]); return; }
-    const timer = setTimeout(() => { searchStocks(simStockKeyword).then((data) => setSimStockResults(data || [])).catch(() => { setSimStockResults([]); }); }, 300);
-    return () => clearTimeout(timer);
-  }, [simStockKeyword]);
+    if (!searchKeyword.trim()) {
+      setSearchResults([]);
+      return;
+    }
 
-  const addHolding = () => {
-    if (!newHolding.symbol || !newHolding.buy_date || newHolding.shares <= 0) return;
-    setHoldings([...holdings, { ...newHolding }]);
-    setNewHolding({ symbol: "", buy_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], shares: 100 });
-    setSimStockKeyword("");
+    const timer = window.setTimeout(() => {
+      searchStocks(searchKeyword)
+        .then((items) => {
+          setSearchResults(items || []);
+          setShowSearchResults(true);
+        })
+        .catch(() => {
+          setSearchResults([]);
+          setShowSearchResults(false);
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [searchKeyword]);
+
+  const rangeHint = useMemo(() => {
+    if (!meta?.earliest_date || !meta?.latest_date) return "当前数据库尚未返回可用日期范围。";
+    return `日期范围：${meta.earliest_date} 至 ${meta.latest_date}`;
+  }, [meta]);
+
+  const validateBacktest = () => {
+    if (!meta) return "当前无法读取回测日期范围。";
+    if (!params.start_date || !params.end_date) return "请先选择完整的开始日期和结束日期。";
+    if (meta.earliest_date && params.start_date < meta.earliest_date) {
+      return `回测开始日期越界，当前最早仅支持 ${meta.earliest_date}。`;
+    }
+    if (meta.latest_date && params.end_date > meta.latest_date) {
+      return `回测结束日期越界，当前最晚仅支持 ${meta.latest_date}。`;
+    }
+    if (params.start_date >= params.end_date) {
+      return "开始日期必须早于结束日期。";
+    }
+    return null;
   };
 
-  const removeHolding = (idx: number) => {
-    setHoldings(holdings.filter((_, i) => i !== idx));
-  };
+  const canRunMessage = validateBacktest();
 
-  const handleSimulate = async () => {
-    if (holdings.length === 0) return;
-    setSimLoading(true);
+  const handleRunBacktest = async () => {
+    if (canRunMessage) {
+      setRunError(canRunMessage);
+      showToast("error", canRunMessage);
+      return;
+    }
+    setRunLoading(true);
+    setRunError(null);
     try {
-      const data = await simulatePortfolio(holdings);
-      setSimResult(data);
-    } catch (e: any) { showToast("error", e.message || t("backtest.error")); }
-    setSimLoading(false);
+      const nextResult = await runBacktest(params);
+      setResult(nextResult);
+      showToast("success", "回测已完成，可查看历史研究测算结果。");
+    } catch (err: unknown) {
+      const message = err instanceof Error && err.message.trim() ? err.message : "回测执行失败，请稍后重试。";
+      setRunError(message);
+      setResult(null);
+      showToast("error", message);
+    } finally {
+      setRunLoading(false);
+    }
   };
 
-  const handleRun = async () => {
-    setLoading(true);
-    try { const data = await runBacktest(params); setResult(data); } catch (e: any) { showToast("error", e.message || t("backtest.error")); }
-    setLoading(false);
+  const addHoldingError = () => {
+    if (!newHolding.symbol) return "请先选择一只股票后再添加持仓。";
+    if (!newHolding.buy_date) return "请先选择买入日期。";
+    if (!newHolding.shares || newHolding.shares <= 0) return "股数必须大于 0。";
+    if (meta?.earliest_date && newHolding.buy_date < meta.earliest_date) {
+      return `买入日期越界，当前最早仅支持 ${meta.earliest_date}。`;
+    }
+    if (meta?.latest_date && newHolding.buy_date > meta.latest_date) {
+      return `买入日期越界，当前最晚仅支持 ${meta.latest_date}。`;
+    }
+    return null;
   };
 
-  const metrics = result ? [
-    { label: t("backtest.totalReturn"), value: formatPercent(result.total_return), color: getChangeColor(result.total_return) },
-    { label: t("backtest.annualReturn"), value: formatPercent(result.annual_return), color: getChangeColor(result.annual_return) },
-    { label: t("backtest.excessReturn"), value: formatPercent(result.excess_return), color: getChangeColor(result.excess_return) },
-    { label: t("backtest.maxDrawdown"), value: formatPercent(result.max_drawdown), color: "text-red-400" },
-    { label: t("backtest.sharpeRatio"), value: result.sharpe_ratio.toFixed(2), color: result.sharpe_ratio >= 1 ? "text-emerald-400" : "text-amber-400" },
-    { label: t("backtest.winRate"), value: `${result.win_rate.toFixed(1)}%`, color: "text-white" },
-    { label: t("backtest.totalTrades"), value: String(result.total_trades), color: "text-white" },
-    { label: t("backtest.benchmark"), value: formatPercent(result.benchmark_return), color: getChangeColor(result.benchmark_return) },
-  ] : [];
+  const handleAddHolding = () => {
+    const message = addHoldingError();
+    if (message) {
+      setSimError(message);
+      showToast("error", message);
+      return;
+    }
+    setHoldings((current) => [...current, { ...newHolding }]);
+    setNewHolding({
+      symbol: "",
+      buy_date: meta?.latest_date || "",
+      shares: 100,
+    });
+    setSearchKeyword("");
+    setShowSearchResults(false);
+    setSimError(null);
+    showToast("success", "持仓已加入模拟列表。");
+  };
 
-  const simMetrics = simResult ? [
-    { label: t("backtest.totalInvested"), value: `¥${simResult.total_invested.toLocaleString()}`, color: "text-white" },
-    { label: t("backtest.currentValue"), value: `¥${simResult.current_value.toLocaleString()}`, color: "text-white" },
-    { label: t("backtest.totalReturn"), value: formatPercent(simResult.total_return), color: getChangeColor(simResult.total_return) },
-    { label: t("backtest.totalPnl"), value: `¥${simResult.total_pnl.toLocaleString()}`, color: getChangeColor(simResult.total_pnl) },
-    { label: t("backtest.benchmark"), value: formatPercent(simResult.benchmark_return), color: getChangeColor(simResult.benchmark_return) },
-    { label: t("backtest.excessReturn"), value: formatPercent(simResult.excess_return), color: getChangeColor(simResult.excess_return) },
-  ] : [];
+  const handleRunSimulation = async () => {
+    if (!holdings.length) {
+      const message = "请先添加至少一条持仓，再开始组合模拟。";
+      setSimError(message);
+      showToast("error", message);
+      return;
+    }
+
+    setSimLoading(true);
+    setSimError(null);
+    try {
+      const nextResult = await simulatePortfolio(holdings);
+      setSimResult(nextResult);
+      showToast("success", "组合研究测算已完成。");
+    } catch (err: unknown) {
+      const message = err instanceof Error && err.message.trim() ? err.message : "组合模拟失败，请稍后重试。";
+      setSimError(message);
+      showToast("error", message);
+    } finally {
+      setSimLoading(false);
+    }
+  };
 
   return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      <TopSearch />
-      <h1 className="text-xl font-bold text-white flex items-center gap-2">
-        <span className="w-1 h-6 bg-primary-500 rounded-full" />
-        {t("backtest.title")}
-      </h1>
+    <PageShell title="回测中心" subtitle={activeTab === "backtest" ? "历史研究测算" : "组合研究测算"}>
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: "backtest", label: "策略回测" },
+          { key: "simulate", label: "组合模拟" },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as TabKey)}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab.key ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      <TabSwitch
-        tabs={[
-          { key: "backtest", label: t("backtest.tabBacktest") },
-          { key: "simulate", label: t("backtest.tabSimulate") },
+      <SimulatedDataNotice
+        title="回测研究边界"
+        badges={[
+          { label: `数据截至 ${meta?.latest_date || runtime?.latest_updates?.prices || "待更新"}`, tone: "database" },
+          { label: `样本数 ${meta?.sample_count || 0}`, tone: "database" },
+          { label: "历史研究测算 / 非实盘收益", tone: "simulated" },
         ]}
-        active={activeTab}
-        onChange={setActiveTab}
-        className="w-fit"
+        lines={[
+          "回测结果基于历史行情、费用和滑点假设，不代表未来收益，也不代表实际可成交价格。",
+          "研究组合模拟同样属于研究视图，不代表真实账户表现。",
+        ]}
       />
 
-      {/* 策略回测表单 */}
-      {activeTab === "backtest" && (
-        <GlassCard title={t("backtest.strategy")}>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div>
-              <label className="text-xs text-dark-muted">{t("backtest.strategy")}</label>
-              <select value={params.strategy} onChange={(e) => setParams({ ...params, strategy: e.target.value })} className="w-full mt-1">
-                <option value="fundamental_medium_long">{t("backtest.fundamental")}</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-dark-muted">{t("backtest.market")}</label>
-              <select value={params.market} onChange={(e) => setParams({ ...params, market: e.target.value })} className="w-full mt-1">
-                <option value="A_SHARE">{t("market.aShare")}</option>
-                <option value="HK">{t("market.hk")}</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-dark-muted">{t("backtest.startDate")}</label>
-              <input type="date" value={params.start_date} onChange={(e) => setParams({ ...params, start_date: e.target.value })} className="w-full mt-1" />
-            </div>
-            <div>
-              <label className="text-xs text-dark-muted">{t("backtest.endDate")}</label>
-              <input type="date" value={params.end_date} onChange={(e) => setParams({ ...params, end_date: e.target.value })} className="w-full mt-1" />
-            </div>
-            <div>
-              <label className="text-xs text-dark-muted">{t("backtest.rebalance")}</label>
-              <select value={params.rebalance} onChange={(e) => setParams({ ...params, rebalance: e.target.value })} className="w-full mt-1">
-                <option value="monthly">{t("backtest.monthly")}</option>
-                <option value="quarterly">{t("backtest.quarterly")}</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <button onClick={handleRun} disabled={loading} className="w-full btn-primary px-4 py-2.5 text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                {loading ? <><Loader2 className="w-4 h-4 animate-spin" />{t("backtest.running")}</> : <><Play className="w-4 h-4" />{t("backtest.run")}</>}
-              </button>
-            </div>
-          </div>
-        </GlassCard>
-      )}
+      {activeTab === "backtest" ? (
+        <>
+          <div className="card space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
+              <div>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">策略</label>
+                <select
+                  value={params.strategy}
+                  onChange={(event) => setParams((current) => ({ ...current, strategy: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                >
+                  <option value="fundamental_medium_long">基本面中期策略</option>
+                </select>
+              </div>
 
-      {/* 模拟买入表单 */}
-      {activeTab === "simulate" && (
-        <GlassCard title={t("backtest.simulateTitle")}>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-              <div className="relative" ref={simStockSearchRef}>
-                <label className="text-xs text-dark-muted">{t("backtest.stockCode")}</label>
-                <div className="relative mt-1">
-                  <input
-                    type="text"
-                    value={newHolding.symbol ? newHolding.symbol : simStockKeyword}
-                    onChange={(e) => { setSimStockKeyword(e.target.value); setNewHolding({ ...newHolding, symbol: "" }); setShowSimStockSearch(true); }}
-                    onFocus={() => setShowSimStockSearch(true)}
-                    placeholder={t("backtest.stockSearch")}
-                    className="w-full pl-9"
-                  />
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted" />
+              <div>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">市场</label>
+                <select
+                  value={params.market}
+                  onChange={(event) => setParams((current) => ({ ...current, market: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                >
+                  {MARKET_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">开始日期</label>
+                <input
+                  type="date"
+                  value={params.start_date}
+                  min={meta?.earliest_date || undefined}
+                  max={meta?.latest_date || undefined}
+                  onChange={(event) => setParams((current) => ({ ...current, start_date: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">结束日期</label>
+                <input
+                  type="date"
+                  value={params.end_date}
+                  min={meta?.earliest_date || undefined}
+                  max={meta?.latest_date || undefined}
+                  onChange={(event) => setParams((current) => ({ ...current, end_date: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">调仓频率</label>
+                <select
+                  value={params.rebalance}
+                  onChange={(event) => setParams((current) => ({ ...current, rebalance: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                >
+                  {REBALANCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={() => void handleRunBacktest()}
+                  disabled={runLoading || metaLoading}
+                  className="btn-primary flex w-full items-center justify-center gap-2 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  title={canRunMessage || "开始回测"}
+                >
+                  {runLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  {runLoading ? "计算中，预计约 30 秒" : "开始回测"}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border border-[var(--border-default)] bg-slate-50 px-4 py-3 text-sm text-[var(--text-body)]">
+                {metaLoading ? "正在读取可用日期范围..." : rangeHint}
+              </div>
+              <div className="rounded-xl border border-[var(--border-default)] bg-slate-50 px-4 py-3 text-sm text-[var(--text-body)]">
+                手续费：佣金 {((meta?.fees.commission_rate || 0) * 100).toFixed(3)}% + 印花税{" "}
+                {((meta?.fees.stamp_duty_rate || 0) * 100).toFixed(3)}%
+              </div>
+              <div className="rounded-xl border border-[var(--border-default)] bg-slate-50 px-4 py-3 text-sm text-[var(--text-body)]">
+                滑点：{((meta?.fees.slippage_rate || 0) * 100).toFixed(2)}% · 基准：{meta?.assumptions.benchmark || "待核验"}
+              </div>
+              <div className="rounded-xl border border-[var(--border-default)] bg-slate-50 px-4 py-3 text-sm text-[var(--text-body)]">
+                边界：{meta?.assumptions.handles_limit_lock ? "已考虑涨跌停锁定" : "未建模涨跌停"}；
+                {meta?.assumptions.handles_suspension ? "已考虑停牌" : "未显式建模停牌恢复"}
+              </div>
+            </div>
+
+            {metaError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                回测元数据加载失败：{metaError}
+              </div>
+            ) : null}
+            {runError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{runError}</div>
+            ) : null}
+          </div>
+
+          {result ? (
+            <>
+              <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
+                <ResultCard label="总收益" value={formatPercent(result.total_return)} tone={result.total_return >= 0 ? "positive" : "negative"} />
+                <ResultCard label="年化收益" value={formatPercent(result.annual_return)} tone={result.annual_return >= 0 ? "positive" : "negative"} />
+                <ResultCard label="基准收益" value={formatPercent(result.benchmark_return)} tone={result.benchmark_return >= 0 ? "positive" : "negative"} />
+                <ResultCard label="超额收益" value={formatPercent(result.excess_return)} tone={result.excess_return >= 0 ? "positive" : "negative"} />
+                <ResultCard label="最大回撤" value={formatPercent(result.max_drawdown)} tone="negative" />
+                <ResultCard label="夏普比率" value={formatNumber(result.sharpe_ratio)} />
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="card">
+                  <div className="mb-3">
+                    <h2 className="text-base font-semibold text-[var(--text-primary)]">权益曲线</h2>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">历史研究测算，不代表未来收益。</p>
+                  </div>
+                  <div className="h-[340px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={result.equity_curve}>
+                        <CartesianGrid stroke="#E2E8F0" />
+                        <XAxis dataKey="date" tick={{ fill: "#64748B", fontSize: 11 }} />
+                        <YAxis tick={{ fill: "#64748B", fontSize: 11 }} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Line type="monotone" dataKey="equity" stroke="#2563EB" dot={false} strokeWidth={2} />
+                        <Line type="monotone" dataKey="benchmark" stroke="#94A3B8" dot={false} strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                {showSimStockSearch && simStockResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-dark-card border border-white/[0.08] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {simStockResults.map((s) => (
-                      <button key={s.symbol} onClick={() => { setNewHolding({ ...newHolding, symbol: s.symbol }); setSimStockKeyword(""); setShowSimStockSearch(false); setSimStockResults([]); }}
-                        className="w-full text-left px-3 py-2 hover:bg-white/[0.05] text-sm flex items-center gap-2 text-dark-text">
-                        <span className="font-mono text-primary-400">{s.symbol}</span><span>{s.name}</span>
+
+                <div className="card">
+                  <div className="mb-3">
+                    <h2 className="text-base font-semibold text-[var(--text-primary)]">月度超额收益</h2>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">用于观察策略相对基准的阶段性表现。</p>
+                  </div>
+                  <div className="h-[340px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={result.monthly_returns.slice(-24)}>
+                        <CartesianGrid stroke="#E2E8F0" />
+                        <XAxis dataKey="month" tick={{ fill: "#64748B", fontSize: 11 }} />
+                        <YAxis tick={{ fill: "#64748B", fontSize: 11 }} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Bar dataKey="excess_return" fill="#14B8A6" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="card space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="relative" ref={searchRef}>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">股票代码或名称</label>
+                <div className="relative mt-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+                  <input
+                    value={newHolding.symbol || searchKeyword}
+                    onChange={(event) => {
+                      setSearchKeyword(event.target.value);
+                      setNewHolding((current) => ({ ...current, symbol: "" }));
+                      setShowSearchResults(true);
+                    }}
+                    placeholder="搜索股票代码或名称"
+                    className="w-full rounded-xl border border-[var(--border-default)] bg-white py-2 pl-9 pr-3 text-sm text-[var(--text-primary)]"
+                  />
+                </div>
+                {showSearchResults && searchResults.length > 0 ? (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-[var(--border-default)] bg-white shadow-lg">
+                    {searchResults.map((stock) => (
+                      <button
+                        key={stock.symbol}
+                        onClick={() => {
+                          setNewHolding((current) => ({ ...current, symbol: stock.symbol }));
+                          setSearchKeyword("");
+                          setShowSearchResults(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[var(--text-primary)] hover:bg-slate-50"
+                      >
+                        <span className="font-mono text-primary-600">{stock.symbol}</span>
+                        <span>{sanitizeDisplayText(stock.name, stock.symbol)}</span>
+                        <span className="ml-auto text-xs text-[var(--text-secondary)]">{marketLabel(stock.market)}</span>
                       </button>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
+
               <div>
-                <label className="text-xs text-dark-muted">{t("backtest.buyDate")}</label>
-                <input type="date" value={newHolding.buy_date} onChange={(e) => setNewHolding({ ...newHolding, buy_date: e.target.value })} className="w-full mt-1" />
+                <label className="text-xs font-medium text-[var(--text-secondary)]">买入日期</label>
+                <input
+                  type="date"
+                  value={newHolding.buy_date}
+                  min={meta?.earliest_date || undefined}
+                  max={meta?.latest_date || undefined}
+                  onChange={(event) => setNewHolding((current) => ({ ...current, buy_date: event.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                />
               </div>
+
               <div>
-                <label className="text-xs text-dark-muted">{t("backtest.buyShares")}</label>
-                <input type="number" value={newHolding.shares} onChange={(e) => setNewHolding({ ...newHolding, shares: parseInt(e.target.value) || 0 })} className="w-full mt-1" min={100} step={100} />
+                <label className="text-xs font-medium text-[var(--text-secondary)]">股数</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={newHolding.shares}
+                  onChange={(event) => setNewHolding((current) => ({ ...current, shares: Number(event.target.value) || 0 }))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-white px-3 py-2 text-sm text-[var(--text-primary)]"
+                />
               </div>
-              <div className="flex gap-2">
-                <button onClick={addHolding} disabled={!newHolding.symbol} className="btn-secondary px-4 py-2.5 text-sm disabled:opacity-50 flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" />{t("backtest.add")}
+
+              <div className="flex items-end gap-2">
+                <button onClick={handleAddHolding} className="btn-secondary flex items-center gap-2 px-4 py-2 text-sm">
+                  <Plus className="h-4 w-4" />
+                  添加持仓
                 </button>
-                <button onClick={handleSimulate} disabled={simLoading || holdings.length === 0} className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50 flex-1 flex items-center justify-center gap-1.5">
-                  {simLoading ? <><Loader2 className="w-4 h-4 animate-spin" />{t("backtest.simulating")}</> : t("backtest.startSimulate")}
+                <button
+                  onClick={() => void handleRunSimulation()}
+                  disabled={simLoading || holdings.length === 0}
+                  className="btn-primary flex flex-1 items-center justify-center gap-2 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {simLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  {simLoading ? "计算中" : "开始模拟"}
                 </button>
               </div>
             </div>
 
-            {holdings.length > 0 && (
+            <div className="rounded-xl border border-[var(--border-default)] bg-slate-50 px-4 py-3 text-sm text-[var(--text-body)]">
+              组合模拟流程：输入股票、日期和股数后先点击“添加持仓”，待列表中出现持仓记录后，再点击“开始模拟”。
+            </div>
+
+            {simError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{simError}</div>
+            ) : null}
+          </div>
+
+          <div className="card">
+            {holdings.length === 0 ? (
+              <EmptyState
+                message="当前还没有加入模拟持仓。"
+                description="请先添加至少一条持仓记录，再开始组合研究测算。"
+              />
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-white/[0.06]">
-                      <th className="text-left py-2 px-3 text-dark-muted text-xs">{t("backtest.stockCode")}</th>
-                      <th className="text-left py-2 px-3 text-dark-muted text-xs">{t("backtest.buyDate")}</th>
-                      <th className="text-right py-2 px-3 text-dark-muted text-xs">{t("backtest.buyShares")}</th>
-                      <th className="text-right py-2 px-3 text-dark-muted text-xs">{t("backtest.operation")}</th>
+                    <tr className="border-b border-[var(--border-default)]">
+                      {["股票", "买入日期", "股数", "操作"].map((header) => (
+                        <th key={header} className="px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                          {header}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {holdings.map((h, idx) => (
-                      <tr key={idx} className="border-b border-white/[0.03]">
-                        <td className="py-2 px-3 font-mono text-primary-400">{h.symbol}</td>
-                        <td className="py-2 px-3 text-dark-text">{h.buy_date}</td>
-                        <td className="py-2 px-3 text-right text-dark-text">{h.shares}</td>
-                        <td className="py-2 px-3 text-right">
-                          <button onClick={() => removeHolding(idx)} className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition-colors">
-                            <Trash2 className="w-4 h-4" />
+                    {holdings.map((holding, index) => (
+                      <tr key={`${holding.symbol}-${holding.buy_date}-${index}`} className="border-b border-[var(--border-light)]">
+                        <td className="px-3 py-3 font-mono text-[var(--text-primary)]">{holding.symbol}</td>
+                        <td className="px-3 py-3 text-[var(--text-body)]">{holding.buy_date}</td>
+                        <td className="px-3 py-3 text-[var(--text-body)]">{holding.shares}</td>
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => setHoldings((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            删除
                           </button>
                         </td>
                       </tr>
@@ -234,139 +560,58 @@ export default function BacktestPage() {
                 </table>
               </div>
             )}
-
-            {holdings.length === 0 && (
-              <EmptyState message={t("backtest.holdingList")} description={t("backtest.stockSearch")} />
-            )}
-          </div>
-        </GlassCard>
-      )}
-
-      {/* 策略回测结果 */}
-      {activeTab === "backtest" && result && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {metrics.map((m) => (
-              <GlassCard key={m.label} className="text-center">
-                <p className="text-xs text-dark-muted">{m.label}</p>
-                <p className={`text-2xl font-bold mt-1 font-mono ${m.color}`}>{m.value}</p>
-              </GlassCard>
-            ))}
           </div>
 
-          <GlassCard title={t("backtest.equityCurve")}>
-            <div className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={result.equity_curve}>
-                  <CartesianGrid stroke="#1E293B" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94A3B8" }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ color: "#94A3B8" }} />
-                  <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={2} dot={false} name={t("backtest.strategyEquity")} />
-                  <Line type="monotone" dataKey="benchmark" stroke="#94A3B8" strokeWidth={1} dot={false} name={t("backtest.benchmark")} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </GlassCard>
-
-          <GlassCard title={t("backtest.monthlyExcess")}>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={result.monthly_returns.slice(-24)}>
-                  <CartesianGrid stroke="#1E293B" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="excess_return" fill="#6366f1" name={t("backtest.excessReturnPct")} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </GlassCard>
-        </>
-      )}
-
-      {/* 模拟买入结果 */}
-      {activeTab === "simulate" && simResult && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {simMetrics.map((m) => (
-              <GlassCard key={m.label} className="text-center">
-                <p className="text-xs text-dark-muted">{m.label}</p>
-                <p className={`text-xl font-bold mt-1 font-mono ${m.color}`}>{m.value}</p>
-              </GlassCard>
-            ))}
-          </div>
-
-          <GlassCard title={t("backtest.holdingDetail")}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/[0.06]">
-                    {[t("backtest.stockCode"), t("backtest.stockName"), t("backtest.buyDate"), t("backtest.buyPrice"), t("backtest.buyShares"), t("backtest.totalInvested"), t("backtest.currentPrice"), t("backtest.currentValue"), t("backtest.totalPnl"), t("backtest.totalReturn")].map((h, i) => (
-                      <th key={i} className="text-left py-2 px-3 text-dark-muted text-xs">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {simResult.holdings.map((h, idx) => (
-                    <tr key={idx} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
-                      <td className="py-2 px-3 font-mono text-primary-400">{h.symbol}</td>
-                      <td className="py-2 px-3 text-dark-text">{h.name}</td>
-                      <td className="py-2 px-3 text-dark-muted">{h.buy_date}</td>
-                      <td className="py-2 px-3 text-right font-mono text-dark-text">{h.buy_price.toFixed(2)}</td>
-                      <td className="py-2 px-3 text-right text-dark-text">{h.shares}</td>
-                      <td className="py-2 px-3 text-right font-mono text-dark-text">{h.cost.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right font-mono text-dark-text">{h.current_price.toFixed(2)}</td>
-                      <td className="py-2 px-3 text-right font-mono text-dark-text">{h.current_value.toLocaleString()}</td>
-                      <td className={`py-2 px-3 text-right font-mono font-bold ${getChangeColor(h.pnl)}`}>{h.pnl >= 0 ? "+" : ""}{h.pnl.toLocaleString()}</td>
-                      <td className={`py-2 px-3 text-right font-mono font-bold ${getChangeColor(h.pnl_pct)}`}>{formatPercent(h.pnl_pct)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
-
-          {simResult.equity_curve.length > 0 && (
-            <GlassCard title={t("backtest.simEquityCurve")}>
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={simResult.equity_curve}>
-                    <CartesianGrid stroke="#1E293B" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94A3B8" }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Legend wrapperStyle={{ color: "#94A3B8" }} />
-                    <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={2} dot={false} name={t("backtest.portfolioValue")} />
-                    <Line type="monotone" dataKey="benchmark" stroke="#94A3B8" strokeWidth={1} dot={false} name={t("backtest.benchmarkLabel")} />
-                  </LineChart>
-                </ResponsiveContainer>
+          {simResult ? (
+            <>
+              <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+                <ResultCard label="总投入" value={formatNumber(simResult.total_invested, 0)} />
+                <ResultCard label="当前市值" value={formatNumber(simResult.current_value, 0)} />
+                <ResultCard label="总收益" value={formatPercent(simResult.total_return)} tone={simResult.total_return >= 0 ? "positive" : "negative"} />
+                <ResultCard label="基准收益" value={formatPercent(simResult.benchmark_return)} tone={simResult.benchmark_return >= 0 ? "positive" : "negative"} />
+                <ResultCard label="超额收益" value={formatPercent(simResult.excess_return)} tone={simResult.excess_return >= 0 ? "positive" : "negative"} />
               </div>
-            </GlassCard>
-          )}
 
-          {simResult.monthly_returns.length > 0 && (
-            <GlassCard title={t("backtest.simMonthlyReturn")}>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={simResult.monthly_returns.slice(-24)}>
-                    <CartesianGrid stroke="#1E293B" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="strategy_return" fill="#6366f1" name={t("backtest.portfolioReturn")} radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="benchmark_return" fill="#94A3B8" name={t("backtest.benchmarkReturn")} radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="excess_return" fill="#10b981" name={t("backtest.excessReturnLabel")} radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="card">
+                <div className="mb-3">
+                  <h2 className="text-base font-semibold text-[var(--text-primary)]">持仓结果</h2>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">以下结果属于研究视图 / 非实盘 / 不代表未来收益。</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border-default)]">
+                        {["股票", "买入日期", "买入价", "当前价", "股数", "成本", "当前市值", "盈亏", "收益率"].map((header) => (
+                          <th key={header} className="px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {simResult.holdings.map((holding) => (
+                        <tr key={`${holding.symbol}-${holding.buy_date}`} className="border-b border-[var(--border-light)]">
+                          <td className="px-3 py-3 font-mono text-[var(--text-primary)]">{holding.symbol}</td>
+                          <td className="px-3 py-3 text-[var(--text-body)]">{holding.buy_date}</td>
+                          <td className="px-3 py-3 font-mono text-[var(--text-primary)]">{formatNumber(holding.buy_price)}</td>
+                          <td className="px-3 py-3 font-mono text-[var(--text-primary)]">{formatNumber(holding.current_price)}</td>
+                          <td className="px-3 py-3 text-[var(--text-body)]">{holding.shares}</td>
+                          <td className="px-3 py-3 font-mono text-[var(--text-primary)]">{formatNumber(holding.cost, 0)}</td>
+                          <td className="px-3 py-3 font-mono text-[var(--text-primary)]">{formatNumber(holding.current_value, 0)}</td>
+                          <td className={`px-3 py-3 font-mono ${getChangeColor(holding.pnl)}`}>{formatNumber(holding.pnl, 0)}</td>
+                          <td className={`px-3 py-3 font-mono ${getChangeColor(holding.pnl_pct)}`}>{formatPercent(holding.pnl_pct)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </GlassCard>
-          )}
-        </>
+            </>
+          ) : null}
+        </div>
       )}
 
-      <div className="disclaimer">{t("app.disclaimer")}</div>
-    </div>
+      <div className="disclaimer">本系统仅用于研究和辅助分析，不构成任何投资建议。</div>
+    </PageShell>
   );
 }

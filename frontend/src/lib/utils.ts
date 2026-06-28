@@ -1,20 +1,47 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+const GARBLE_MARKERS = ["姘", "蹇", "鑾", "鑼", "鐚", "閿", "闁", "鑴"];
+
+const DISPLAY_REPLACEMENTS: Array<[string, string]> = [
+  ["建议买入", "研究关注"],
+  ["建议加仓", "增强关注"],
+  ["建议减仓", "降低关注"],
+  ["建议卖出", "回避观察"],
+  ["建议观望", "继续观察"],
+  ["建议研究关注", "研究关注"],
+  ["可适当增强关注", "增强关注"],
+  ["强烈推荐", "高优先级研究样本"],
+  ["强烈买入", "高关注"],
+  ["买入", "高关注"],
+  ["加仓", "增强关注"],
+  ["减仓", "风险升高"],
+  ["卖出", "回避观察"],
+  ["目标价", "模型观察价"],
+  ["止损价", "风险警戒价"],
+  ["建议仓位", "研究仓位"],
+  ["组合表现", "研究组合表现"],
+  ["投资建议", "研究结论"],
+  ["收益保证", "历史研究测算结果"],
+  ["收益承诺", "历史研究测算结果"],
+  ["跑赢市场", "相对基准表现更强"],
+  ["跑赢指数", "相对基准表现更强"],
+  ["投资策略", "研究策略"],
+  ["观望等待", "继续观察"],
+];
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** 格式化百分比 */
 export function formatPercent(value: number | null | undefined, decimals = 2): string {
-  if (value === null || value === undefined) return "N/A";
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
   const sign = value >= 0 ? "+" : "";
   return `${sign}${value.toFixed(decimals)}%`;
 }
 
-/** 格式化金额（亿） */
 export function formatAmount(value: number | null | undefined, t?: (key: string) => string): string {
-  if (value === null || value === undefined) return "N/A";
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
   const billion = t ? t("unit.billion") : "亿";
   const million = t ? t("unit.million") : "万";
   if (value >= 1e8) return `${(value / 1e8).toFixed(2)}${billion}`;
@@ -22,18 +49,16 @@ export function formatAmount(value: number | null | undefined, t?: (key: string)
   return value.toFixed(2);
 }
 
-/** 格式化数字（千分位） */
 export function formatNumber(value: number | null | undefined, decimals = 2): string {
-  if (value === null || value === undefined) return "--";
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
   return value.toLocaleString("zh-CN", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
-/** 格式化市值 */
 export function formatMarketCap(value: number | null | undefined, t?: (key: string) => string): string {
-  if (value === null || value === undefined) return "--";
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
   const trillion = t ? t("unit.trillion") : "万亿";
   const billion = t ? t("unit.billion") : "亿";
   const million = t ? t("unit.million") : "万";
@@ -43,7 +68,6 @@ export function formatMarketCap(value: number | null | undefined, t?: (key: stri
   return value.toFixed(0);
 }
 
-/** 获取风险等级颜色 */
 export function getRiskColor(level: string): string {
   const map: Record<string, string> = {
     low: "text-emerald-400",
@@ -54,7 +78,43 @@ export function getRiskColor(level: string): string {
   return map[level] || "text-dark-muted";
 }
 
-/** 信号类型映射 */
+export function isLikelyGarbledText(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const markerHits = GARBLE_MARKERS.reduce((sum, marker) => sum + text.split(marker).length - 1, 0);
+  const questionHits = (text.match(/\?/g) || []).length;
+  return markerHits >= 2 || questionHits >= Math.max(4, Math.floor(text.length / 6));
+}
+
+function tryRepairGarbledText(text: string): string {
+  try {
+    const repaired = decodeURIComponent(escape(text));
+    return isLikelyGarbledText(repaired) ? text : repaired;
+  } catch {
+    return text;
+  }
+}
+
+export function normalizeResearchText(text: string | null | undefined): string {
+  if (!text) return "";
+  let result = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (isLikelyGarbledText(result)) {
+    result = tryRepairGarbledText(result);
+  }
+  for (const [source, target] of DISPLAY_REPLACEMENTS) {
+    result = result.replaceAll(source, target);
+  }
+  return result.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function sanitizeDisplayText(text: string | null | undefined, fallback = ""): string {
+  const normalized = normalizeResearchText(text);
+  if (!normalized) return fallback;
+  if (isLikelyGarbledText(normalized)) {
+    return fallback || "原始文本存在编码异常，已隐藏原文，请以结构化评分和数据为准。";
+  }
+  return normalized;
+}
+
 export function signalTypeLabel(type: string, t?: (key: string) => string): string {
   if (t) {
     const key = `signal.${type.toLowerCase()}`;
@@ -62,16 +122,64 @@ export function signalTypeLabel(type: string, t?: (key: string) => string): stri
     if (translated !== key) return translated;
   }
   const map: Record<string, string> = {
-    BUY: "买入",
-    ADD: "加仓",
+    BUY: "高关注",
+    ADD: "增强关注",
     WATCH: "观察",
-    REDUCE: "减仓",
-    SELL: "卖出",
+    REDUCE: "风险升高",
+    SELL: "回避观察",
   };
   return map[type] || type;
 }
 
-/** 信号类型样式类 */
+export function signalFieldLabel(field: "position" | "entry" | "target" | "stop"): string {
+  const map = {
+    position: "研究仓位",
+    entry: "参考价",
+    target: "模型观察价",
+    stop: "风险警戒价",
+  };
+  return map[field];
+}
+
+export function sanitizeSignalNarrative(text: string | null | undefined): string {
+  return sanitizeDisplayText(text, "原始文本存在编码异常，已隐藏原文，请以结构化评分和数据为准。");
+}
+
+export function humanizeReasonSummary(
+  text: string | null | undefined,
+  fallback = "当前条目已纳入研究样本库，详情页可继续查看评分追溯。"
+): string {
+  const normalized = sanitizeDisplayText(text, fallback);
+  if (!normalized) return fallback;
+  if (!normalized.includes("优势:") && !normalized.includes("风险:")) {
+    return normalized;
+  }
+  const advantageMatch = normalized.match(/优势:\s*([^|]+)/);
+  const riskMatch = normalized.match(/风险:\s*(.+)$/);
+  const advantages = advantageMatch?.[1]?.trim();
+  const risks = riskMatch?.[1]?.trim();
+  const parts = [];
+  if (advantages) parts.push(`当前进入样本库的主要支撑因素包括 ${advantages}。`);
+  if (risks) parts.push(`仍需重点关注 ${risks}。`);
+  parts.push("该结论仅基于现有评分与指标，不构成投资建议。");
+  return parts.join("");
+}
+
+export function humanizePoolReason(
+  text: string | null | undefined,
+  fallback = "当前标的进入该策略池，原因将结合评分和已有指标持续更新。"
+): string {
+  const normalized = sanitizeDisplayText(text, fallback);
+  if (!normalized) return fallback;
+  if (normalized.includes("优势:") || normalized.includes("风险:")) {
+    return humanizeReasonSummary(normalized, fallback);
+  }
+  if (normalized.includes("进入")) {
+    return `${normalized} 当前展示仅用于研究观察与样本排序，不构成投资建议。`;
+  }
+  return normalized;
+}
+
 export function signalTypeClass(type: string): string {
   const map: Record<string, string> = {
     BUY: "signal-buy",
@@ -83,7 +191,6 @@ export function signalTypeClass(type: string): string {
   return map[type] || "";
 }
 
-/** 评级样式类 */
 export function ratingClass(rating: string): string {
   const map: Record<string, string> = {
     BUY: "rating-buy",
@@ -95,18 +202,15 @@ export function ratingClass(rating: string): string {
   return map[rating] || "";
 }
 
-/** 生成星级 */
 export function renderStars(count: number, max = 5): string {
-  return "★".repeat(count) + "☆".repeat(max - count);
+  return "★".repeat(count) + "☆".repeat(Math.max(0, max - count));
 }
 
-/** 获取涨跌颜色 - 深色主题 */
 export function getChangeColor(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "text-dark-muted";
+  if (value === null || value === undefined || Number.isNaN(value)) return "text-dark-muted";
   return value >= 0 ? "text-emerald-400" : "text-red-400";
 }
 
-/** 市场标签 */
 export function marketLabel(market: string, t?: (key: string) => string): string {
   if (t) {
     const key = market === "A_SHARE" ? "market.aShare" : "market.hk";
@@ -114,4 +218,38 @@ export function marketLabel(market: string, t?: (key: string) => string): string
     if (translated !== key) return translated;
   }
   return market === "A_SHARE" ? "A股" : "港股";
+}
+
+export function runtimeStatusLabel(value: string | null | undefined): string {
+  const normalized = (value || "").toLowerCase();
+  const map: Record<string, string> = {
+    ok: "正常",
+    healthy: "正常",
+    degraded: "降级",
+    unavailable: "不可用",
+    unknown: "未知",
+    pending: "待执行",
+    error: "失败",
+    success: "成功",
+    running: "运行中",
+    completed: "已完成",
+    live: "真实数据",
+    mock: "模拟数据",
+    hybrid: "混合数据",
+    auto: "自动选择",
+    memory: "演示缓存",
+    redis: "Redis 缓存",
+    system: "系统",
+    admin: "管理员",
+    development: "开发环境",
+    production: "生产环境",
+  };
+  return map[normalized] || value || "未知";
+}
+
+export function dataModeLabel(value: string | null | undefined): string {
+  if (!value) return "未知";
+  if (value.includes("真实")) return "真实/混合数据";
+  if (value.includes("模拟")) return "模拟数据";
+  return runtimeStatusLabel(value);
 }

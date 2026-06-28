@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.trade_signal import TradeSignal
 from app.models.stock import Stock
 from app.models.daily_price import DailyPrice
+from app.api.auth import get_current_user
 
 router = APIRouter(prefix="/api/signals", tags=["信号"])
 
@@ -21,6 +22,7 @@ def list_signals(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """获取信号列表"""
     query = db.query(TradeSignal, Stock).join(Stock, TradeSignal.stock_id == Stock.id)

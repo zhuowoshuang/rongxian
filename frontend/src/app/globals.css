@@ -6,38 +6,82 @@
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/700.css";
 
+/* ============================================================
+   清数智算 — 专业金融投研工作台视觉规范
+   目标：清晰、稳重、可信、长时间阅读不疲劳
+   ============================================================ */
+
 :root {
-  --background: #0B1120;
-  --foreground: #E2E8F0;
-  --card-bg: rgba(255, 255, 255, 0.03);
-  --card-bg-hover: rgba(255, 255, 255, 0.06);
-  --card-border: rgba(255, 255, 255, 0.08);
-  --card-border-hover: rgba(255, 255, 255, 0.12);
-  --card-inner-bg: rgba(255, 255, 255, 0.02);
-  --card-inner-border: rgba(255, 255, 255, 0.05);
-  --glow-primary: rgba(99, 102, 241, 0.4);
-  --text-primary: #FFFFFF;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --text-table: #CBD5E1;
-  --surface: rgba(255, 255, 255, 0.05);
-  --input-bg: rgba(255, 255, 255, 0.05);
-  --input-border: rgba(255, 255, 255, 0.1);
-  --input-placeholder: #64748b;
-  --border-row: rgba(255, 255, 255, 0.06);
-  --border-row-alt: rgba(255, 255, 255, 0.03);
-  --row-hover: rgba(255, 255, 255, 0.03);
-  --skeleton-bg: rgba(255, 255, 255, 0.06);
-  --scrollbar-thumb: rgba(148, 163, 184, 0.2);
-  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.4);
-  --scrollbar-track: transparent;
-  --sidebar-from: #0B1120;
-  --sidebar-to: #111827;
-  --sidebar-border: transparent;
-  --disclaimer-color: #475569;
-  --chart-grid: #1E293B;
-  --chart-text: #94A3B8;
-  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
+  /* ── 页面背景 ── */
+  --bg-page: #F6F8FB;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FAFBFD;
+  --bg-sidebar: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-surface: #F1F5F9;
+  --bg-elevated: #FFFFFF;
+
+  /* ── 文字色阶（从深到浅，最浅不低于 #64748B）── */
+  --text-heading: #0F172A;       /* 大标题、模块标题 */
+  --text-primary: #111827;       /* 主内容文字 */
+  --text-body: #334155;          /* 正文、表格内容 */
+  --text-secondary: #475569;     /* 次要说明 */
+  --text-muted: #64748B;         /* 最弱说明（不低于此） */
+  --text-disabled: #94A3B8;      /* 仅用于禁用态 */
+
+  /* ── 边框 ── */
+  --border-default: #D8DEE9;
+  --border-light: #E8ECF1;
+  --border-focus: #8B5CF6;
+
+  /* ── 主色（蓝紫）── */
+  --primary-50: #F5F3FF;
+  --primary-100: #EDE9FE;
+  --primary-200: #DDD6FE;
+  --primary-400: #A78BFA;
+  --primary-500: #8B5CF6;
+  --primary-600: #7C3AED;
+  --primary-700: #6D28D9;
+
+  /* ── 语义色 ── */
+  --color-success: #047857;
+  --color-success-bg: #ECFDF5;
+  --color-warning: #92400E;
+  --color-warning-bg: #FFFBEB;
+  --color-danger: #B91C1C;
+  --color-danger-bg: #FEF2F2;
+  --color-info: #1E40AF;
+  --color-info-bg: #EFF6FF;
+
+  /* ── 信号色（深色文字 + 浅色背景）── */
+  --signal-buy-text: #047857;
+  --signal-buy-bg: #ECFDF5;
+  --signal-buy-border: #A7F3D0;
+  --signal-add-text: #1D4ED8;
+  --signal-add-bg: #EFF6FF;
+  --signal-add-border: #BFDBFE;
+  --signal-watch-text: #92400E;
+  --signal-watch-bg: #FFFBEB;
+  --signal-watch-border: #FDE68A;
+  --signal-reduce-text: #C2410C;
+  --signal-reduce-bg: #FFF7ED;
+  --signal-reduce-border: #FED7AA;
+  --signal-sell-text: #B91C1C;
+  --signal-sell-bg: #FEF2F2;
+  --signal-sell-border: #FECACA;
+
+  /* ── 表格 ── */
+  --table-header-bg: #F8FAFC;
+  --table-header-text: #475569;
+  --table-row-text: #334155;
+  --table-row-alt-bg: #FAFBFD;
+  --table-row-hover: #F1F5F9;
+  --table-border: #E2E8F0;
+
+  /* ── 阴影 ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
 }
 
 * {
@@ -45,10 +89,22 @@
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg-page);
+  color: var(--text-body);
+  font-family: "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── 字号体系 ── */
+.text-title    { font-size: 32px; font-weight: 700; line-height: 1.2; color: var(--text-heading); }
+.text-h1       { font-size: 24px; font-weight: 700; line-height: 1.3; color: var(--text-heading); }
+.text-h2       { font-size: 20px; font-weight: 600; line-height: 1.3; color: var(--text-heading); }
+.text-h3       { font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--text-primary); }
+.text-body     { font-size: 15px; font-weight: 400; line-height: 1.6; color: var(--text-body); }
+.text-caption  { font-size: 13px; font-weight: 400; line-height: 1.5; color: var(--text-muted); }
+.text-number   { font-family: "JetBrains Mono", "Menlo", monospace; font-weight: 600; }
 
 /* 数字等宽字体 */
 .font-mono,
@@ -56,52 +112,70 @@ body {
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
 }
 
-/* 自定义滚动条 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
+/* ── 自定义滚动条 ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 
-/* 渐变背景 - 侧边栏 */
+/* ── 侧边栏 ── */
 .gradient-bg {
-  background: linear-gradient(180deg, var(--sidebar-from) 0%, var(--sidebar-to) 100%);
-  border-right: 1px solid var(--sidebar-border);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-default);
 }
 
-/* 卡片样式 - 毛玻璃效果 */
+/* ============================================================
+   卡片系统
+   ============================================================ */
 .card {
   @apply rounded-2xl p-6;
-  background: var(--card-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-sm);
 }
 
 .card-hover {
-  @apply card transition-all duration-300;
+  @apply card transition-all duration-200;
 }
 .card-hover:hover {
-  background: var(--card-bg-hover);
-  border-color: var(--card-border-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-card);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
-/* 内部卡片（嵌套在 .card 中） */
 .card-inner {
   @apply rounded-xl p-4;
-  background: var(--card-inner-bg);
-  border: 1px solid var(--card-inner-border);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+}
+
+/* 信息提示卡 */
+.card-info {
+  @apply rounded-xl p-4;
+  background: var(--color-info-bg);
+  border: 1px solid #BFDBFE;
+  color: var(--color-info);
+}
+
+.card-warning {
+  @apply rounded-xl p-4;
+  background: var(--color-warning-bg);
+  border: 1px solid #FDE68A;
+  color: var(--color-warning);
+}
+
+.card-danger {
+  @apply rounded-xl p-4;
+  background: var(--color-danger-bg);
+  border: 1px solid #FECACA;
+  color: var(--color-danger);
+}
+
+.card-success {
+  @apply rounded-xl p-4;
+  background: var(--color-success-bg);
+  border: 1px solid #A7F3D0;
+  color: var(--color-success);
 }
 
 /* 渐变边框卡片 */
@@ -114,7 +188,7 @@ body {
   inset: -1px;
   border-radius: 18px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.1), transparent);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(167, 139, 250, 0.08), transparent);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -122,81 +196,80 @@ body {
   pointer-events: none;
 }
 
-/* 信号标签 - 深色主题 */
+/* ============================================================
+   信号标签（深色文字 + 浅色背景 + 清晰边框）
+   ============================================================ */
 .signal-buy {
-  @apply px-2.5 py-1 rounded-full text-xs font-medium;
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  @apply px-2.5 py-1 rounded-full text-xs font-semibold;
+  background: var(--signal-buy-bg);
+  color: var(--signal-buy-text);
+  border: 1px solid var(--signal-buy-border);
 }
 .signal-add {
-  @apply px-2.5 py-1 rounded-full text-xs font-medium;
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  @apply px-2.5 py-1 rounded-full text-xs font-semibold;
+  background: var(--signal-add-bg);
+  color: var(--signal-add-text);
+  border: 1px solid var(--signal-add-border);
 }
 .signal-watch {
-  @apply px-2.5 py-1 rounded-full text-xs font-medium;
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  @apply px-2.5 py-1 rounded-full text-xs font-semibold;
+  background: var(--signal-watch-bg);
+  color: var(--signal-watch-text);
+  border: 1px solid var(--signal-watch-border);
 }
 .signal-reduce {
-  @apply px-2.5 py-1 rounded-full text-xs font-medium;
-  background: rgba(249, 115, 22, 0.15);
-  color: #fb923c;
-  border: 1px solid rgba(249, 115, 22, 0.2);
+  @apply px-2.5 py-1 rounded-full text-xs font-semibold;
+  background: var(--signal-reduce-bg);
+  color: var(--signal-reduce-text);
+  border: 1px solid var(--signal-reduce-border);
 }
 .signal-sell {
-  @apply px-2.5 py-1 rounded-full text-xs font-medium;
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  @apply px-2.5 py-1 rounded-full text-xs font-semibold;
+  background: var(--signal-sell-bg);
+  color: var(--signal-sell-text);
+  border: 1px solid var(--signal-sell-border);
 }
 
-/* 评级标签 - 深色主题 */
+/* 评级标签 */
 .rating-buy {
   @apply px-3 py-1 rounded-full text-sm font-bold;
-  background: linear-gradient(135deg, #10B981, #059669);
+  background: #047857;
   color: white;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
 }
 .rating-add {
   @apply px-3 py-1 rounded-full text-sm font-bold;
-  background: linear-gradient(135deg, #3B82F6, #2563EB);
+  background: #1D4ED8;
   color: white;
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
 }
 .rating-watch {
   @apply px-3 py-1 rounded-full text-sm font-bold;
-  background: linear-gradient(135deg, #F59E0B, #D97706);
+  background: #92400E;
   color: white;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
 }
 .rating-reduce {
   @apply px-3 py-1 rounded-full text-sm font-bold;
-  background: linear-gradient(135deg, #F97316, #EA580C);
+  background: #C2410C;
   color: white;
-  box-shadow: 0 0 12px rgba(249, 115, 22, 0.3);
 }
 .rating-sell {
   @apply px-3 py-1 rounded-full text-sm font-bold;
-  background: linear-gradient(135deg, #EF4444, #DC2626);
+  background: #B91C1C;
   color: white;
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
 }
 
 /* 星级 */
-.star { @apply text-amber-400; }
-.star-empty { @apply text-gray-600; }
+.star { color: #D97706; }
+.star-empty { color: #CBD5E1; }
 
-/* 骨架屏动画 */
+/* 骨架屏 */
 .skeleton {
   @apply animate-skeleton-pulse rounded-lg;
-  background: var(--skeleton-bg);
+  background: #E2E8F0;
 }
 
-/* 输入框 */
+/* ============================================================
+   输入框
+   ============================================================ */
 input[type="text"],
 input[type="email"],
 input[type="password"],
@@ -205,224 +278,194 @@ input[type="search"],
 select,
 textarea {
   @apply rounded-xl px-4 py-2.5 text-sm transition-all;
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  color: var(--foreground);
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-size: 14px;
 }
 input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
 }
 input::placeholder,
 textarea::placeholder {
-  color: var(--input-placeholder);
+  color: #94A3B8;
 }
 
-/* 深色主题按钮 */
+/* 搜索输入框（带图标的输入框使用此样式） */
+.search-input {
+  padding-left: 44px !important;
+  padding-right: 36px !important;
+  height: 44px;
+}
+
+/* ============================================================
+   强制高对比文字覆盖（解决残留深色主题 class）
+   ============================================================ */
+/* 表格行文字必须清晰 */
+td { color: var(--text-body) !important; }
+th { color: var(--text-secondary) !important; font-weight: 600; }
+td strong, td b { color: var(--text-primary) !important; }
+
+/* 修复 text-dark-muted 在浅色背景上的对比度 */
+.text-dark-muted { color: #475569 !important; }
+.text-dark-text { color: #0F172A !important; }
+
+/* 修复 opacity 导致文字过浅 */
+td [class*="text-dark-muted"] { color: #475569 !important; opacity: 1 !important; }
+td [class*="/70"] { opacity: 1 !important; }
+
+/* 表格行边框和 hover */
+tr { border-bottom-color: var(--border-light) !important; }
+tr:hover { background: #F1F5F9 !important; }
+
+/* 修复 emerald/red 在浅色背景上的对比度 */
+.text-emerald-400 { color: #047857 !important; }
+.text-red-400 { color: #B91C1C !important; }
+.text-amber-400 { color: #92400E !important; }
+.text-blue-400 { color: #1D4ED8 !important; }
+
+/* 修复 bg-white/[0.03] 等深色主题残留 */
+.bg-white\/\[0\.03\] { background: rgba(0, 0, 0, 0.02) !important; }
+.bg-white\/\[0\.05\] { background: rgba(0, 0, 0, 0.03) !important; }
+.border-white\/\[0\.03\] { border-color: var(--border-light) !important; }
+.border-white\/\[0\.06\] { border-color: var(--border-default) !important; }
+.border-white\/\[0\.08\] { border-color: var(--border-default) !important; }
+.hover\:bg-white\/\[0\.03\]:hover { background: var(--bg-surface) !important; }
+.hover\:bg-white\/\[0\.05\]:hover { background: var(--bg-surface) !important; }
+
+/* ============================================================
+   按钮系统
+   ============================================================ */
 .btn-primary {
-  @apply px-4 py-2.5 rounded-xl text-sm font-medium transition-all;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  @apply px-5 py-2.5 rounded-xl text-sm font-semibold transition-all;
+  background: var(--primary-600);
   color: white;
+  border: none;
+  min-height: 40px;
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #7c7cfa, #a78bfa);
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+  background: var(--primary-700);
+  box-shadow: var(--shadow-md);
 }
 .btn-primary:active {
   transform: scale(0.98);
 }
+.btn-primary:disabled {
+  background: #CBD5E1;
+  color: #94A3B8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  @apply px-5 py-2.5 rounded-xl text-sm font-medium transition-all;
+  background: var(--bg-card);
+  color: var(--text-body);
+  border: 1px solid var(--border-default);
+  min-height: 40px;
+}
+.btn-secondary:hover {
+  background: var(--bg-surface);
+  border-color: var(--primary-400);
+  color: var(--text-primary);
+}
 
 .btn-ghost {
   @apply px-4 py-2.5 rounded-xl text-sm font-medium transition-all;
-  background: rgba(255, 255, 255, 0.05);
-  color: #94A3B8;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+  min-height: 40px;
 }
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #E2E8F0;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
-/* 表格 */
+.btn-danger {
+  @apply px-5 py-2.5 rounded-xl text-sm font-semibold transition-all;
+  background: #B91C1C;
+  color: white;
+  border: none;
+  min-height: 40px;
+}
+.btn-danger:hover {
+  background: #991B1B;
+}
+
+/* ============================================================
+   表格系统
+   ============================================================ */
 table {
   @apply w-full;
+  border-collapse: separate;
+  border-spacing: 0;
 }
+
 thead tr {
-  border-bottom: 1px solid var(--border-row);
+  background: var(--table-header-bg);
 }
-tbody tr {
-  border-bottom: 1px solid var(--border-row-alt);
-  transition: background 0.15s;
-}
-tbody tr:hover {
-  background: var(--row-hover);
-}
+
 th {
-  @apply text-xs font-medium uppercase tracking-wider;
-  color: var(--text-muted);
+  @apply text-xs font-semibold tracking-wide uppercase;
+  color: var(--table-header-text);
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--table-border);
+  text-align: left;
+  white-space: nowrap;
 }
+
 td {
   @apply text-sm;
-  color: var(--text-table);
+  color: var(--table-row-text);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-/* 免责声明 */
+tbody tr:nth-child(even) {
+  background: var(--table-row-alt-bg);
+}
+
+tbody tr:hover {
+  background: var(--table-row-hover);
+}
+
+/* 表格内链接 */
+td a {
+  color: var(--primary-600);
+  text-decoration: none;
+  font-weight: 500;
+}
+td a:hover {
+  color: var(--primary-700);
+  text-decoration: underline;
+}
+
+/* ============================================================
+   免责声明
+   ============================================================ */
 .disclaimer {
   @apply text-center text-xs py-4;
-  color: var(--disclaimer-color);
+  color: var(--text-muted);
 }
 
-/* Recharts 图表覆盖 */
+/* ============================================================
+   Recharts 图表
+   ============================================================ */
 .recharts-cartesian-grid line {
-  stroke: var(--chart-grid);
+  stroke: #E2E8F0;
 }
 .recharts-text {
-  fill: var(--chart-text) !important;
-  font-size: 11px;
+  fill: #64748B !important;
+  font-size: 12px;
 }
 .recharts-tooltip-wrapper {
   outline: none;
 }
-
-/* ==================== 亮色主题 ==================== */
-/* 通过切换 CSS 变量实现主题切换，无需 !important 覆盖。
-   组件中使用 var(--xxx) 引用颜色，.light 只需改变量值。 */
-.light {
-  --background: #F8FAFC;
-  --foreground: #1E293B;
-  --card-bg: rgba(255, 255, 255, 0.9);
-  --card-bg-hover: rgba(255, 255, 255, 1);
-  --card-border: rgba(0, 0, 0, 0.08);
-  --card-border-hover: rgba(0, 0, 0, 0.12);
-  --card-inner-bg: rgba(0, 0, 0, 0.02);
-  --card-inner-border: rgba(0, 0, 0, 0.06);
-  --glow-primary: rgba(99, 102, 241, 0.2);
-  --text-primary: #1E293B;
-  --text-secondary: #475569;
-  --text-muted: #64748B;
-  --text-table: #334155;
-  --surface: rgba(0, 0, 0, 0.03);
-  --input-bg: #FFFFFF;
-  --input-border: #E2E8F0;
-  --input-placeholder: #94A3B8;
-  --border-row: #E2E8F0;
-  --border-row-alt: #F1F5F9;
-  --row-hover: rgba(99, 102, 241, 0.04);
-  --skeleton-bg: rgba(0, 0, 0, 0.06);
-  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
-  --scrollbar-track: rgba(0, 0, 0, 0.03);
-  --sidebar-from: #FFFFFF;
-  --sidebar-to: #F1F5F9;
-  --sidebar-border: #E2E8F0;
-  --disclaimer-color: #94A3B8;
-  --chart-grid: #E2E8F0;
-  --chart-text: #64748B;
-  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-/* --- Tailwind dark-* class overrides (组件中仍在使用的) --- */
-.light .text-dark-muted { color: var(--text-muted); }
-.light .text-dark-text { color: var(--text-primary); }
-.light .bg-dark-bg { background: var(--background); }
-.light .bg-dark-card { background: var(--card-bg); }
-.light .bg-dark-surface { background: #F1F5F9; }
-.light .border-dark-border { border-color: var(--card-border); }
-
-/* --- Tailwind white opacity class overrides (组件中仍在使用的) --- */
-.light [class*="bg-white/\[0\.03\]"] { background: rgba(0, 0, 0, 0.03); }
-.light [class*="bg-white/\[0\.05\]"] { background: rgba(0, 0, 0, 0.04); }
-.light [class*="bg-white/\[0\.06\]"] { background: rgba(0, 0, 0, 0.05); }
-.light [class*="bg-white/\[0\.08\]"] { background: rgba(0, 0, 0, 0.06); }
-.light [class*="bg-white/5"] { background: rgba(0, 0, 0, 0.04); }
-.light [class*="bg-white/10"] { background: rgba(0, 0, 0, 0.06); }
-.light [class*="border-white/\[0\.03\]"] { border-color: rgba(0, 0, 0, 0.06); }
-.light [class*="border-white/\[0\.06\]"] { border-color: rgba(0, 0, 0, 0.08); }
-.light [class*="border-white/\[0\.08\]"] { border-color: rgba(0, 0, 0, 0.1); }
-.light [class*="border-white/\[0\.1\]"] { border-color: rgba(0, 0, 0, 0.12); }
-.light [class*="border-white/\[0\.15\]"] { border-color: rgba(0, 0, 0, 0.15); }
-.light [class*="border-white/10"] { border-color: rgba(0, 0, 0, 0.1); }
-
-/* --- White text → dark text (组件中仍在使用的) --- */
-.light .text-white { color: var(--text-primary); }
-.light [class*="text-white/20"] { color: var(--text-secondary); }
-.light [class*="text-white/25"] { color: var(--text-secondary); }
-.light [class*="text-white/30"] { color: var(--text-secondary); }
-.light [class*="text-white/40"] { color: var(--text-muted); }
-.light [class*="text-white/50"] { color: var(--text-muted); }
-.light [class*="text-white/80"] { color: #334155; }
-
-/* --- Cards (box-shadow 需单独处理) --- */
-.light .card {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-}
-.light .card-hover:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-.light .card-glow::before {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05), transparent);
-}
-
-/* --- Inputs (box-shadow 需单独处理) --- */
-.light input:focus,
-.light select:focus,
-.light textarea:focus {
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-.light input,
-.light select,
-.light textarea {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-/* --- Buttons --- */
-.light .btn-ghost {
-  background: rgba(0, 0, 0, 0.03);
-  color: #64748B;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-}
-.light .btn-ghost:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #1E293B;
-}
-.light .btn-secondary {
-  background: rgba(0, 0, 0, 0.04);
-  color: #475569;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-.light .btn-secondary:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-/* --- Recharts tooltip --- */
-.light .recharts-tooltip-wrapper .bg-dark-card {
-  background: #FFFFFF;
-  border-color: #E2E8F0;
-  color: #1E293B;
-}
-
-/* --- Login page --- */
-.light .min-h-screen {
-  background: #F8FAFC;
-}
-
-/* --- Colorful badges - keep visible --- */
-.light .bg-blue-500\/10 { background: rgba(59, 130, 246, 0.1); }
-.light .bg-purple-500\/10 { background: rgba(139, 92, 246, 0.1); }
-.light .bg-emerald-500\/10 { background: rgba(16, 185, 129, 0.1); }
-.light .bg-amber-500\/10 { background: rgba(245, 158, 11, 0.1); }
-.light .bg-red-500\/10 { background: rgba(239, 68, 68, 0.1); }
-.light .bg-primary-500\/10 { background: rgba(99, 102, 241, 0.1); }
-.light .bg-primary-500\/20 { background: rgba(99, 102, 241, 0.15); }
-.light .bg-orange-500\/10 { background: rgba(249, 115, 22, 0.1); }
-.light .bg-gray-500\/10 { background: rgba(100, 116, 139, 0.1); }
-
-/* --- Signal badges (颜色本身不随主题变) --- */
-.light .signal-buy { background: rgba(16, 185, 129, 0.12); color: #059669; }
-.light .signal-add { background: rgba(59, 130, 246, 0.12); color: #2563EB; }
-.light .signal-watch { background: rgba(245, 158, 11, 0.12); color: #D97706; }
-.light .signal-reduce { background: rgba(249, 115, 22, 0.12); color: #EA580C; }
-.light .signal-sell { background: rgba(239, 68, 68, 0.12); color: #DC2626; }

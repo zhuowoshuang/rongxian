@@ -1,74 +1,67 @@
-"""
-Redis 客户端模块
-提供速率限制和缓存功能，支持优雅降级（Redis 不可用时回退到内存）
-"""
+"""Redis and in-memory fallback helpers for cache and rate limit."""
+
+from __future__ import annotations
+
 import json
 import logging
 import time
 from typing import Optional
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 _redis_client = None
-_available = False
+_redis_available = False
+
+_memory_rate_limit_store: dict[str, list[float]] = {}
+_memory_cache_store: dict[str, tuple[float, dict]] = {}
+_last_cleanup = time.time()
+_CLEANUP_INTERVAL = 300
 
 
 def _get_client():
-    """获取 Redis 客户端（懒加载，失败时返回 None）"""
-    global _redis_client, _available
+    global _redis_client, _redis_available
     if _redis_client is not None:
-        return _redis_client if _available else None
+        return _redis_client if _redis_available else None
     if not settings.REDIS_URL:
         return None
     try:
         import redis
+
         _redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=2)
         _redis_client.ping()
-        _available = True
-        logger.info(f"Redis 连接成功: {settings.REDIS_URL}")
+        _redis_available = True
+        logger.info("Redis connected: %s", settings.REDIS_URL)
         return _redis_client
-    except Exception as e:
-        logger.warning(f"Redis 不可用，回退到内存模式: {e}")
-        _available = False
+    except Exception as exc:
+        logger.warning("Redis unavailable, fallback to memory mode: %s", exc)
+        _redis_available = False
         return None
 
 
-# ==================== 速率限制 ====================
-
-# 内存回退存储
-_memory_store: dict[str, list[float]] = {}
-_last_cleanup: float = time.time()
-_CLEANUP_INTERVAL = 300
-
-
 def _cleanup_memory(now: float):
-    """清理过期内存记录"""
     global _last_cleanup
     if now - _last_cleanup < _CLEANUP_INTERVAL:
         return
     _last_cleanup = now
-    expired_keys = []
-    for k, v in _memory_store.items():
-        active = [t for t in v if now - t < 3600]
-        if not active:
-            expired_keys.append(k)
+
+    expired_cache_keys = [key for key, (expires_at, _) in _memory_cache_store.items() if expires_at <= now]
+    for key in expired_cache_keys:
+        _memory_cache_store.pop(key, None)
+
+    expired_rate_keys = []
+    for key, attempts in _memory_rate_limit_store.items():
+        active_attempts = [attempt for attempt in attempts if now - attempt < 3600]
+        if active_attempts:
+            _memory_rate_limit_store[key] = active_attempts
         else:
-            _memory_store[k] = active
-    for k in expired_keys:
-        del _memory_store[k]
+            expired_rate_keys.append(key)
+    for key in expired_rate_keys:
+        _memory_rate_limit_store.pop(key, None)
 
 
 def check_rate_limit(key: str, limit: int, window: int) -> bool:
-    """
-    检查速率限制
-    Args:
-        key: 限制键（如 "login:192.168.1.1"）
-        limit: 窗口内最大次数
-        window: 时间窗口（秒）
-    Returns:
-        True 表示允许，False 表示超出限制
-    """
     client = _get_client()
     now = time.time()
 
@@ -81,57 +74,67 @@ def check_rate_limit(key: str, limit: int, window: int) -> bool:
             pipe.zadd(redis_key, {str(now): now})
             pipe.expire(redis_key, window)
             results = pipe.execute()
-            count = results[1]
-            return count < limit
-        except Exception as e:
-            logger.debug(f"Redis 速率限制失败，回退内存: {e}")
+            return results[1] < limit
+        except Exception as exc:
+            logger.debug("Redis rate limit failed, fallback to memory: %s", exc)
 
-    # 内存回退
     _cleanup_memory(now)
-    attempts = _memory_store.get(key, [])
-    _memory_store[key] = [t for t in attempts if now - t < window]
-    if len(_memory_store[key]) >= limit:
+    attempts = [attempt for attempt in _memory_rate_limit_store.get(key, []) if now - attempt < window]
+    if len(attempts) >= limit:
+        _memory_rate_limit_store[key] = attempts
         return False
-    _memory_store[key].append(now)
+    attempts.append(now)
+    _memory_rate_limit_store[key] = attempts
     return True
 
 
-# ==================== 缓存 ====================
-
 def cache_get(key: str) -> Optional[dict]:
-    """从缓存获取 JSON 数据"""
     client = _get_client()
-    if not client:
+    if client:
+        try:
+            data = client.get(f"cache:{key}")
+            return json.loads(data) if data else None
+        except Exception:
+            pass
+
+    now = time.time()
+    _cleanup_memory(now)
+    cache_item = _memory_cache_store.get(key)
+    if not cache_item:
         return None
-    try:
-        data = client.get(f"cache:{key}")
-        return json.loads(data) if data else None
-    except Exception:
+    expires_at, payload = cache_item
+    if expires_at <= now:
+        _memory_cache_store.pop(key, None)
         return None
+    return payload
 
 
 def cache_set(key: str, data: dict, ttl: int = 300):
-    """设置缓存（默认 5 分钟过期）"""
     client = _get_client()
-    if not client:
-        return
-    try:
-        client.setex(f"cache:{key}", ttl, json.dumps(data, ensure_ascii=False, default=str))
-    except Exception:
-        pass
+    if client:
+        try:
+            client.setex(f"cache:{key}", ttl, json.dumps(data, ensure_ascii=False, default=str))
+            return
+        except Exception:
+            pass
+
+    expires_at = time.time() + ttl
+    _memory_cache_store[key] = (expires_at, data)
 
 
 def cache_delete(key: str):
-    """删除缓存"""
     client = _get_client()
-    if not client:
-        return
-    try:
-        client.delete(f"cache:{key}")
-    except Exception:
-        pass
+    if client:
+        try:
+            client.delete(f"cache:{key}")
+        except Exception:
+            pass
+    _memory_cache_store.pop(key, None)
 
 
 def is_redis_available() -> bool:
-    """检查 Redis 是否可用"""
     return _get_client() is not None
+
+
+def cache_backend_mode() -> str:
+    return "redis" if is_redis_available() else "memory"

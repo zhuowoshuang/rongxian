@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { StockPoolItem } from "@/types";
-import { ratingClass, marketLabel, getChangeColor, formatPercent } from "@/lib/utils";
+import { ratingClass, signalTypeLabel } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import GlassCard from "@/components/ui/GlassCard";
 
@@ -45,7 +45,7 @@ export default function StockPoolCard({ title, type, items }: Props) {
                   <span className="text-xs font-bold text-primary-400 font-mono">{item.score.toFixed(0)}</span>
                 )}
                 {item.rating && (
-                  <span className={`${ratingClass(item.rating)} !px-2 !py-0 !text-[10px]`}>{item.rating}</span>
+                  <span className={`${ratingClass(item.rating)} !px-2 !py-0 !text-[10px]`}>{signalTypeLabel(item.rating)}</span>
                 )}
               </div>
             </button>

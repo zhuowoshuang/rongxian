@@ -9,7 +9,8 @@ import {
   getApiConfigs, saveApiConfig, deleteApiConfig, testApiConfig,
   getUserQuotas, updateUserQuota,
   getApiLogs, getApiStats,
-  // 新增
+  getAdminSystemStatus,
+  getOperationLogSummary,
   getAdminStocks, updateAdminStock, deleteAdminStock, adminSyncStocks, adminFetchStock,
   getAdminScores, updateAdminScore,
   getAdminSignals, updateAdminSignal, deleteAdminSignal,
@@ -20,11 +21,13 @@ import type {
   AdminScoreItem, AdminScoreResponse,
   AdminSignalItem, AdminSignalResponse,
   AdminUserItem, ApiConfigItem, AdminTableInfo, AdminTableDataResponse,
+  RuntimeInfo,
 } from "@/types";
 import GlassCard from "@/components/ui/GlassCard";
 import TabSwitch from "@/components/ui/TabSwitch";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { Shield, Users, Database, BarChart3, AlertCircle, CheckCircle, Key, Activity, Settings, Search, Plus, RefreshCw, Trash2, Edit3, Save, X, Download, Zap } from "lucide-react";
 
 export default function AdminPage() {
@@ -49,23 +52,23 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      <h1 className="text-xl font-bold text-white flex items-center gap-2">
+    <div className="p-6 space-y-6 max-w-[1400px] mx-auto" style={{ background: "var(--bg-page)" }}>
+      <h1 className="text-h1 flex items-center gap-2">
         <span className="w-1 h-6 bg-primary-500 rounded-full" />
         {t("admin.title")}
       </h1>
 
       {msg && (
-        <div className={`px-4 py-3 rounded-xl text-sm flex items-center gap-2 ${
-          msg.type === "ok" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"
+        <div className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
+          msg.type === "ok" ? "card-success" : "card-danger"
         }`}>
           {msg.type === "ok" ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {msg.text}
         </div>
       )}
 
-      <TabSwitch
-        tabs={[
+      <div className="flex gap-2 flex-wrap bg-white rounded-xl p-1 border border-[var(--border-default)] shadow-sm">
+        {[
           { key: "overview", label: t("admin.tabOverview") },
           { key: "stocks", label: t("admin.tabStocks") },
           { key: "scores", label: t("admin.tabScores") },
@@ -73,10 +76,20 @@ export default function AdminPage() {
           { key: "users", label: t("admin.tabUsers") },
           { key: "database", label: t("admin.tabDatabase") },
           { key: "api-config", label: t("admin.tabApiConfig") },
-        ]}
-        active={activeTab}
-        onChange={setActiveTab}
-      />
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === tab.key
+                ? "bg-primary-50 text-primary-700 shadow-sm font-semibold"
+                : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {activeTab === "overview" && <OverviewTab />}
       {activeTab === "stocks" && <StocksTab showMsg={showMsg} />}
@@ -117,7 +130,7 @@ function SearchBar({ value, onChange, placeholder, onSearch }: { value: string; 
   return (
     <div className="flex gap-2">
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -157,31 +170,123 @@ function Pagination({ page, total, pageSize, onChange }: { page: number; total: 
 
 function OverviewTab() {
   const { t } = useTranslation();
-  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [status, setStatus] = useState<RuntimeInfo | null>(null);
+  const [logSummary, setLogSummary] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getAdminStats().then(setStats).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([getAdminSystemStatus(), getOperationLogSummary().catch(() => null)])
+      .then(([systemStatus, summary]) => {
+        setStatus(systemStatus);
+        setLogSummary(summary);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <SkeletonCard />;
 
+  const counts = (status?.counts || {}) as Record<string, number>;
+  const updates = (status?.latest_updates || {}) as Record<string, string | null>;
+  const security = (status?.security || {}) as Record<string, boolean>;
+  const apiCfg = (status?.api_configured || {}) as Record<string, number>;
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-      {stats && [
-        { label: t("admin.stockCount"), value: stats.total_stocks, icon: <BarChart3 className="w-5 h-5" />, color: "text-primary-400" },
-        { label: t("admin.signalCount"), value: stats.total_signals, icon: <Zap className="w-5 h-5" />, color: "text-emerald-400" },
-        { label: t("admin.userCount"), value: stats.total_users, icon: <Users className="w-5 h-5" />, color: "text-blue-400" },
-        { label: t("admin.reportCount"), value: stats.total_reports, icon: <Activity className="w-5 h-5" />, color: "text-amber-400" },
-        { label: t("admin.dbSizeLabel"), value: stats.db_size, icon: <Database className="w-5 h-5" />, color: "text-purple-400" },
-        { label: t("admin.researchReports"), value: stats.total_research_reports, icon: <Key className="w-5 h-5" />, color: "text-cyan-400" },
-      ].map((m) => (
-        <GlassCard key={m.label} className="text-center">
-          <div className={`${m.color} mb-2 flex justify-center`}>{m.icon}</div>
-          <p className="text-2xl font-bold text-white font-mono">{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</p>
-          <p className="text-xs text-dark-muted mt-1">{m.label}</p>
+    <div className="space-y-6">
+      {/* 核心指标卡片 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {[
+          { label: t("admin.stockCount"), value: counts.stocks ?? 0, icon: <BarChart3 className="w-5 h-5" />, color: "text-primary-400" },
+          { label: t("admin.signalCount"), value: counts.signals ?? 0, icon: <Zap className="w-5 h-5" />, color: "text-emerald-400" },
+          { label: t("admin.scoreCount"), value: counts.scores ?? 0, icon: <Activity className="w-5 h-5" />, color: "text-blue-400" },
+          { label: t("admin.reportCount"), value: counts.reports ?? 0, icon: <Activity className="w-5 h-5" />, color: "text-amber-400" },
+          { label: t("admin.dbSizeLabel"), value: status?.db_size || "N/A", icon: <Database className="w-5 h-5" />, color: "text-purple-400" },
+          { label: t("admin.researchReports"), value: counts.research_reports ?? 0, icon: <Key className="w-5 h-5" />, color: "text-cyan-400" },
+        ].map((m) => (
+          <GlassCard key={m.label} className="text-center">
+            <div className={`${m.color} mb-2 flex justify-center`}>{m.icon}</div>
+            <p className="text-2xl font-bold text-[var(--text-primary)] font-mono">{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1">{m.label}</p>
+          </GlassCard>
+        ))}
+      </div>
+
+      {/* 系统状态 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <GlassCard title="系统状态">
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-caption">数据库状态</span>
+              <DataStatusBadge label={status?.database === "ok" ? "正常" : "异常"} tone={status?.database === "ok" ? "live" : "warning"} />
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-caption">Redis 状态</span>
+              <DataStatusBadge label={status?.redis === "ok" ? "正常" : "不可用"} tone={status?.redis === "ok" ? "live" : "simulated"} />
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-caption">数据源模式</span>
+              <DataStatusBadge label={status?.data_mode || "待核验"} tone={status?.provider_mode === "mock" ? "simulated" : "live"} />
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-caption">API 配置</span>
+              <span className="text-body text-sm">{apiCfg.enabled || 0} / {apiCfg.total || 0} 已启用</span>
+            </div>
+            {security.default_password_warning && (
+              <div className="flex justify-between items-center">
+                <span className="text-caption">默认密码风险</span>
+                <DataStatusBadge label="存在默认密码" tone="warning" />
+              </div>
+            )}
+          </div>
         </GlassCard>
-      ))}
+
+        <GlassCard title="数据新鲜度">
+          <div className="space-y-3">
+            {[
+              { label: "最新行情", value: updates.prices },
+              { label: "最新评分", value: updates.scores },
+              { label: "最新信号", value: updates.signals },
+              { label: "最新报告", value: updates.reports },
+              { label: "券商研报", value: updates.research_reports },
+            ].map((item) => (
+              <div key={item.label} className="flex justify-between items-center">
+                <span className="text-caption">{item.label}</span>
+                <span className="text-body text-sm font-mono">{item.value || "暂无记录"}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      </div>
+
+      {/* 研究口径说明 */}
+      <GlassCard title="运行与操作摘要">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[
+            { label: "最近报告生成", item: logSummary?.latest_report_generate },
+            { label: "最近 PDF 导出", item: logSummary?.latest_pdf_export },
+            { label: "最近回测 / 模拟", item: logSummary?.latest_backtest },
+            { label: "最近 API 配置 / 管理操作", item: logSummary?.latest_admin_action },
+            { label: "最近错误", item: logSummary?.latest_error },
+            { label: "最近股票同步", item: logSummary?.latest_stock_sync },
+          ].map(({ label, item }) => (
+            <div key={label} className="rounded-xl border border-[var(--border-default)] bg-slate-50 p-3">
+              <p className="text-xs font-medium text-[var(--text-secondary)]">{label}</p>
+              <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{item?.time || "暂无记录"}</p>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">{item?.summary || "未接入或近期无记录"}</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                {item ? `状态：${item.status === "ok" ? "正常" : "失败"} / 触发者：${item.actor || "system"}` : "当前没有可展示的最近记录"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+
+      <div className="card-info">
+        <p className="text-caption font-semibold mb-1">研究口径说明</p>
+        {status?.notes?.map((note: string) => (
+          <p key={note} className="text-body text-sm">• {note}</p>
+        ))}
+      </div>
     </div>
   );
 }
@@ -233,7 +338,7 @@ function StocksTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
 
   const handleSave = async (stock: AdminStockItem) => {
     try {
-      await updateAdminStock(stock.id, { name: stock.name, industry: stock.industry, status: stock.status });
+      await updateAdminStock(stock.id, { name: stock.name, industry: stock.industry ?? undefined, status: stock.status });
       showMsg("ok", `${stock.symbol} ${t("admin.updated")}`);
       setEditing(null);
       fetchStocks();
@@ -412,7 +517,7 @@ function ScoresTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =>
                       <td className="py-2.5 px-2 font-mono text-xs text-primary-400">{s.symbol}</td>
                       <td className="py-2.5 px-2 text-dark-text text-xs">{s.name}</td>
                       <td className="py-2.5 px-2 font-mono font-bold text-white">{isEditing ? "—" : s.total_score}</td>
-                      {["quality_score", "valuation_score", "growth_score", "trend_score", "risk_score"].map((field) => (
+                      {(["quality_score", "valuation_score", "growth_score", "trend_score", "risk_score"] as const).map((field) => (
                         <td key={field} className="py-2.5 px-2 font-mono text-xs">
                           {isEditing ? (
                             <input type="number" step="0.1" value={editing[field]} onChange={(e) => setEditing({ ...editing, [field]: parseFloat(e.target.value) || 0 })} className="w-16 px-1.5 py-1 bg-white/[0.06] border border-primary-500/30 rounded text-xs text-dark-text font-mono" />
@@ -482,9 +587,9 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
     try {
       await updateAdminSignal(editing.id, {
         signal_type: editing.signal_type,
-        entry_price: editing.entry_price,
-        target_price: editing.target_price,
-        stop_loss_price: editing.stop_loss_price,
+        entry_price: editing.entry_price ?? undefined,
+        target_price: editing.target_price ?? undefined,
+        stop_loss_price: editing.stop_loss_price ?? undefined,
         status: editing.status,
       });
       showMsg("ok", t("admin.signalUpdated"));
@@ -557,7 +662,7 @@ function SignalsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) =
                           <Badge text={s.signal_type} className={signalColors[s.signal_type]} />
                         )}
                       </td>
-                      {["entry_price", "target_price", "stop_loss_price"].map((field) => (
+                      {(["entry_price", "target_price", "stop_loss_price"] as const).map((field) => (
                         <td key={field} className="py-2.5 px-2 font-mono text-xs">
                           {isEditing ? (
                             <input type="number" step="0.01" value={editing[field] || ""} onChange={(e) => setEditing({ ...editing, [field]: parseFloat(e.target.value) || 0 })} className="w-20 px-1.5 py-1 bg-white/[0.06] border border-primary-500/30 rounded text-xs text-dark-text font-mono" />
@@ -794,7 +899,7 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
   const handleSave = async (config: Partial<ApiConfigItem>) => {
     try {
       await saveApiConfig(config);
-      showMsg("ok", t("admin.configSaved", { provider: config.provider }));
+      showMsg("ok", t("admin.configSaved", { provider: config.provider || "未命名" }));
       fetchConfigs();
       setEditing(null);
     } catch (e: any) { showMsg("err", e.message || t("admin.saveFailed")); }
@@ -822,6 +927,11 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
 
   return (
     <div className="space-y-4">
+      <div className="card-info">
+        <p className="text-sm font-semibold">API 供应商配置</p>
+        <p className="text-xs mt-1 opacity-80">管理员可在此维护数据源和模型服务供应商配置。密钥仅用于后端调用，前端始终脱敏展示。本系统不接券商交易接口，不提供自动下单能力。</p>
+      </div>
+
       <GlassCard title={t("admin.apiProviderConfig")}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -860,7 +970,7 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
       </GlassCard>
 
       <GlassCard title={editing ? `${t("admin.edit")} ${editing.provider}` : t("admin.addApiConfig")}>
-        <ApiConfigForm initial={editing} onSave={handleSave} onCancel={() => setEditing(null)} />
+        <ApiConfigForm initial={editing || undefined} onSave={handleSave} onCancel={() => setEditing(null)} />
       </GlassCard>
     </div>
   );

@@ -37,8 +37,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const savedToken = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
     if (savedToken && savedUser) {
+      let parsedUser: User | null = null;
+      try {
+        parsedUser = JSON.parse(savedUser) as User;
+      } catch {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setLoading(false);
+        return;
+      }
+      if (!parsedUser?.username || !parsedUser?.role) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setLoading(false);
+        return;
+      }
       setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      setUser(parsedUser);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
       fetch("/api/auth/me", {

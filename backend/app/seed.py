@@ -313,13 +313,25 @@ def seed(force: bool = False):
 
 
 def _seed_users(db):
-    """创建测试账号"""
-    test_accounts = [
-        {"username": "admin", "password": "admin123", "display_name": "管理员", "role": "admin"},
-        {"username": "demo", "password": "demo123", "display_name": "演示用户", "role": "user"},
-        {"username": "analyst", "password": "analyst123", "display_name": "分析师", "role": "analyst"},
-        {"username": "guest", "password": "guest123", "display_name": "访客", "role": "guest"},
-    ]
+    """Create seed users."""
+    app_env = os.environ.get("APP_ENV", "development").lower()
+    default_passwords = {"admin123", "demo123", "analyst123", "guest123"}
+
+    if app_env == "production":
+        initial_admin_password = os.environ.get("INITIAL_ADMIN_PASSWORD", "").strip()
+        if not initial_admin_password or initial_admin_password in default_passwords:
+            raise RuntimeError("Production seed requires INITIAL_ADMIN_PASSWORD and it must not reuse demo passwords.")
+        test_accounts = [
+            {"username": "admin", "password": initial_admin_password, "display_name": "Admin", "role": "admin"},
+        ]
+    else:
+        test_accounts = [
+            {"username": "admin", "password": "admin123", "display_name": "Admin", "role": "admin"},
+            {"username": "demo", "password": "demo123", "display_name": "Demo User", "role": "user"},
+            {"username": "analyst", "password": "analyst123", "display_name": "Analyst", "role": "analyst"},
+            {"username": "guest", "password": "guest123", "display_name": "Guest", "role": "guest"},
+        ]
+
     for acc in test_accounts:
         existing = db.query(User).filter(User.username == acc["username"]).first()
         if not existing:
@@ -333,21 +345,19 @@ def _seed_users(db):
             db.add(user)
             logger.info(f"Created user: {acc['username']} (role={acc['role']})")
         else:
-            # 确保已有用户的 role 始终正确
             if existing.role != acc["role"]:
                 existing.role = acc["role"]
                 logger.info(f"Updated {acc['username']} role -> {acc['role']}")
     db.commit()
 
-    # 创建默认通知设置
     default_settings = [
-        ("email_smtp_host", "smtp.qq.com", "SMTP 服务器"),
-        ("email_smtp_port", "465", "SMTP 端口"),
-        ("email_sender", "", "发件邮箱 (QQ邮箱)"),
-        ("email_password", "", "邮箱授权码"),
-        ("email_recipient", "", "收件邮箱"),
-        ("feishu_webhook", "", "飞书 Webhook URL"),
-        ("feishu_enabled", "false", "启用飞书推送"),
+        ("email_smtp_host", "smtp.qq.com", "SMTP ???"),
+        ("email_smtp_port", "465", "SMTP ??"),
+        ("email_sender", "", "???? (QQ??)"),
+        ("email_password", "", "?????"),
+        ("email_recipient", "", "????"),
+        ("feishu_webhook", "", "?? Webhook URL"),
+        ("feishu_enabled", "false", "??????"),
     ]
     for key, value, desc in default_settings:
         existing = db.query(Setting).filter(Setting.key == key).first()

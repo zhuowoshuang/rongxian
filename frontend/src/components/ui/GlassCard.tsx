@@ -16,8 +16,8 @@ export default function GlassCard({ children, className, title, action, glow }: 
       {(title || action) && (
         <div className="flex items-center justify-between mb-4">
           {title && (
-            <h3 className="text-sm font-semibold text-dark-muted dark:text-dark-muted flex items-center gap-2">
-              <span className="w-1 h-4 bg-primary-500 rounded-full" />
+            <h3 className="text-h3 flex items-center gap-2">
+              <span className="w-1 h-5 bg-primary-500 rounded-full" />
               {title}
             </h3>
           )}

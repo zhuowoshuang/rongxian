@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { TopSignal } from "@/types";
-import { signalTypeLabel, signalTypeClass, renderStars, formatPercent, getChangeColor, marketLabel } from "@/lib/utils";
+import { signalTypeLabel, signalTypeClass, renderStars, formatPercent, getChangeColor, marketLabel, sanitizeSignalNarrative } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import GlassCard from "@/components/ui/GlassCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -51,7 +51,11 @@ export default function SignalTable({ signals }: Props) {
                 </td>
                 <td className="py-3 px-2 star text-sm">{renderStars(s.signal_strength)}</td>
                 <td className="py-3 px-2 font-mono text-dark-text">{s.suggested_position > 0 ? `${s.suggested_position}%` : "-"}</td>
-                <td className="py-3 px-2 text-xs text-dark-muted max-w-[200px] truncate">{s.logic}</td>
+                <td className="py-3 px-2 text-xs text-dark-muted max-w-[200px] truncate">
+                  {sanitizeSignalNarrative(s.logic)
+                    .replace("建议研究关注", "研究关注")
+                    .replace("可适当增强关注", "增强关注")}
+                </td>
                 <td className="py-3 px-2 text-xs text-amber-400 max-w-[150px] truncate">{s.risk?.join(", ")}</td>
                 <td className="py-3 px-2 font-mono text-dark-text">{s.latest_close?.toFixed(2) || "-"}</td>
                 <td className={`py-3 px-2 font-medium font-mono ${getChangeColor(s.change_pct)}`}>

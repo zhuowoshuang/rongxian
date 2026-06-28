@@ -499,14 +499,22 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
         all_peers = [{"symbol": stock.symbol, "name": stock.name, "score": score.total_score if score else 0, "rating": score.rating if score else "N/A", "close": latest_price.close if latest_price else 0, "pe": latest_price.pe if latest_price else None}] + peer_scores
         all_peers.sort(key=lambda x: x["score"], reverse=True)
 
-        md += f"### 7.1 {stock.industry}行业排名\n\n"
+        # 只展示 Top 20 + 当前标的
+        rank = next(i for i, p in enumerate(all_peers, 1) if p["symbol"] == stock.symbol)
+        show_peers = all_peers[:20]
+        # 如果当前标的不在 Top 20，追加到末尾
+        if rank > 20:
+            current_peer = all_peers[rank - 1]
+            show_peers.append(current_peer)
+
+        md += f"### 7.1 {stock.industry}行业排名（Top 20）\n\n"
         md += "| 排名 | 代码 | 名称 | 评分 | 评级 | 收盘价 | PE |\n"
         md += "|------|------|------|------|------|--------|------|\n"
-        for i, p in enumerate(all_peers, 1):
+        for i, p in enumerate(show_peers, 1):
+            actual_rank = next(j for j, x in enumerate(all_peers, 1) if x["symbol"] == p["symbol"])
             marker = " ← **当前标的**" if p["symbol"] == stock.symbol else ""
-            md += f"| {i} | {p['symbol']} | {p['name']} | {p['score']:.0f} | {p['rating']} | {p['close']:.2f} | {p['pe'] or 'N/A'} |\n"
+            md += f"| {actual_rank} | {p['symbol']} | {p['name']} | {p['score']:.0f} | {p['rating']} | {p['close']:.2f} | {p['pe'] or 'N/A'}{marker} |\n"
 
-        rank = next(i for i, p in enumerate(all_peers, 1) if p["symbol"] == stock.symbol)
         md += f"\n### 7.2 竞争力评估\n\n"
         md += f"在 {len(all_peers)} 家同行业公司中，{stock.name}综合评分排名第 **{rank}** 位。"
         if rank == 1:

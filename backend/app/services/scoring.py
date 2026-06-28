@@ -725,23 +725,145 @@ def score_stock(
 # ==================== 批量评分 ====================
 
 def score_all_stocks(db: Session, score_date: date) -> list[StockScore]:
-    """对所有活跃股票进行评分（批量提交，每 100 只 flush 一次）"""
+    """对所有活跃股票进行评分（批量查询 + 批量提交）"""
     stocks = db.query(Stock).filter(Stock.status == "ACTIVE").all()
     if not stocks:
         return []
 
     stock_ids = [s.id for s in stocks]
+    stock_map = {s.id: s for s in stocks}
 
     # 批量计算行业统计（一次查询）
     industry_stats = _compute_industry_stats(db, stock_ids)
 
+    # ── 批量预加载数据（消除 N+1）──
+
+    # 1. 批量获取每只股票的最新价格
+    latest_price_subq = (
+        db.query(DailyPrice.stock_id, func.max(DailyPrice.trade_date).label("max_date"))
+        .filter(DailyPrice.stock_id.in_(stock_ids), DailyPrice.trade_date <= score_date)
+        .group_by(DailyPrice.stock_id)
+        .subquery()
+    )
+    price_rows = db.query(DailyPrice).join(
+        latest_price_subq,
+        (DailyPrice.stock_id == latest_price_subq.c.stock_id) &
+        (DailyPrice.trade_date == latest_price_subq.c.max_date),
+    ).all()
+    price_map = {p.stock_id: p for p in price_rows}
+
+    # 2. 批量获取每只股票的最新财务数据
+    latest_fin_subq = (
+        db.query(FinancialMetric.stock_id, func.max(FinancialMetric.report_period).label("max_period"))
+        .filter(FinancialMetric.stock_id.in_(stock_ids), FinancialMetric.report_period <= score_date)
+        .group_by(FinancialMetric.stock_id)
+        .subquery()
+    )
+    fin_rows = db.query(FinancialMetric).join(
+        latest_fin_subq,
+        (FinancialMetric.stock_id == latest_fin_subq.c.stock_id) &
+        (FinancialMetric.report_period == latest_fin_subq.c.max_period),
+    ).all()
+    fin_map = {f.stock_id: f for f in fin_rows}
+
+    # 3. 批量获取每只股票的前一期财务数据
+    prev_fin_map = {}
+    for f in fin_rows:
+        prev = (
+            db.query(FinancialMetric)
+            .filter(FinancialMetric.stock_id == f.stock_id, FinancialMetric.report_period < f.report_period)
+            .order_by(FinancialMetric.report_period.desc())
+            .first()
+        )
+        if prev:
+            prev_fin_map[f.stock_id] = prev
+
+    # 4. 批量获取每只股票的最新技术指标
+    latest_tech_subq = (
+        db.query(TechnicalIndicator.stock_id, func.max(TechnicalIndicator.trade_date).label("max_date"))
+        .filter(TechnicalIndicator.stock_id.in_(stock_ids), TechnicalIndicator.trade_date <= score_date)
+        .group_by(TechnicalIndicator.stock_id)
+        .subquery()
+    )
+    tech_rows = db.query(TechnicalIndicator).join(
+        latest_tech_subq,
+        (TechnicalIndicator.stock_id == latest_tech_subq.c.stock_id) &
+        (TechnicalIndicator.trade_date == latest_tech_subq.c.max_date),
+    ).all()
+    tech_map = {t.stock_id: t for t in tech_rows}
+
+    # 5. 批量获取已有评分
+    existing_scores = db.query(StockScore).filter(
+        StockScore.stock_id.in_(stock_ids), StockScore.score_date == score_date
+    ).all()
+    existing_map = {s.stock_id: s for s in existing_scores}
+
+    # ── 批量评分 ──
     results = []
     for i, stock in enumerate(stocks):
-        s = score_stock(db, stock.id, score_date, industry_stats)
-        if s:
-            results.append(s)
-        # 每 100 只 flush 一次，最后统一 commit
+        sid = stock.id
+        price = price_map.get(sid)
+        if not price:
+            continue
+
+        financial = fin_map.get(sid)
+        if not financial:
+            continue
+
+        prev_financial = prev_fin_map.get(sid)
+        tech = tech_map.get(sid)
+        ind_stats = industry_stats.get(stock.industry) if industry_stats and stock.industry else None
+
+        # 计算各项评分
+        quality_score, quality_details = calculate_quality_score(financial, prev_financial, ind_stats)
+        valuation_score, valuation_details = calculate_valuation_score(price, financial, ind_stats)
+        growth_score, growth_details = calculate_growth_score(financial)
+        trend_score, trend_details = calculate_trend_score(price, tech)
+        risk_score, risk_details = calculate_risk_score(financial, price, tech, ind_stats)
+
+        total_score = quality_score + valuation_score + growth_score + trend_score + risk_score
+        rating = get_rating(total_score)
+
+        # 构建评分摘要
+        all_details = quality_details + valuation_details + growth_details + trend_details + risk_details
+        strengths = [d["item"] for d in all_details if d["score"] >= d["max"] * 0.7]
+        weaknesses = [d["item"] for d in all_details if d["score"] <= d["max"] * 0.3 and d["max"] > 0]
+        reason_summary = f"优势: {', '.join(strengths[:3])}" if strengths else ""
+        if weaknesses:
+            reason_summary += f" | 风险: {', '.join(weaknesses[:3])}"
+
+        # 更新或创建评分记录
+        existing = existing_map.get(sid)
+        if existing:
+            existing.total_score = total_score
+            existing.quality_score = quality_score
+            existing.valuation_score = valuation_score
+            existing.growth_score = growth_score
+            existing.trend_score = trend_score
+            existing.risk_score = risk_score
+            existing.rating = rating
+            existing.reason_summary = reason_summary
+            score = existing
+        else:
+            score = StockScore(
+                stock_id=sid,
+                score_date=score_date,
+                total_score=total_score,
+                quality_score=quality_score,
+                valuation_score=valuation_score,
+                growth_score=growth_score,
+                trend_score=trend_score,
+                risk_score=risk_score,
+                rating=rating,
+                reason_summary=reason_summary,
+            )
+            db.add(score)
+
+        results.append(score)
+
+        # 每 100 只 flush 一次
         if (i + 1) % 100 == 0:
             db.flush()
+
     db.commit()
     return results

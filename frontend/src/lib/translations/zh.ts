@@ -1,8 +1,8 @@
 const zh: Record<string, string> = {
   // App
   "app.name": "清数智算",
-  "app.subtitle": "A股港股智能分析",
-  "app.description": "A股港股智能分析系统",
+  "app.subtitle": "智能投研工作台",
+  "app.description": "A股港股研究辅助系统",
   "app.disclaimer": "本系统仅用于研究和辅助分析，不构成任何投资建议。",
   "app.disclaimer.broker": "券商研报数据来自东方财富。",
 
@@ -77,11 +77,11 @@ const zh: Record<string, string> = {
   "settings.invalidPort": "SMTP 端口必须为数字",
   "settings.syncFailed": "同步失败",
   // Utils
-  "signal.buy": "买入",
-  "signal.add": "加仓",
+  "signal.buy": "高关注",
+  "signal.add": "增强关注",
   "signal.watch": "观察",
-  "signal.reduce": "减仓",
-  "signal.sell": "卖出",
+  "signal.reduce": "风险升高",
+  "signal.sell": "回避观察",
   "market.aShare": "A股",
   "market.hk": "港股",
   "unit.billion": "亿",
@@ -89,18 +89,18 @@ const zh: Record<string, string> = {
   "unit.trillion": "万亿",
 
   // Signal types
-  "signal.BUY": "买入",
-  "signal.ADD": "加仓",
+  "signal.BUY": "高关注",
+  "signal.ADD": "增强关注",
   "signal.WATCH": "观察",
-  "signal.REDUCE": "减仓",
-  "signal.SELL": "卖出",
+  "signal.REDUCE": "风险升高",
+  "signal.SELL": "回避观察",
 
   // Dashboard
   "dashboard.title": "策略总览",
   "dashboard.todaySignals": "今日信号精选",
   "dashboard.signalCount": "共 {count} 个信号",
   "dashboard.signalDistribution": "信号分布",
-  "dashboard.portfolio": "组合表现",
+  "dashboard.portfolio": "研究组合表现",
   "dashboard.stockPool": "股票池",
   "dashboard.strategy": "今日策略总结",
   "dashboard.marketOverview": "市场概览",
@@ -108,17 +108,17 @@ const zh: Record<string, string> = {
 
   // Strategy summary
   "strategy.marketStatus": "市场状态",
-  "strategy.suggestedPosition": "建议总仓位",
+  "strategy.suggestedPosition": "研究仓位区间",
   "strategy.coreStrategy": "核心策略",
   "strategy.riskWarning": "风险提示",
 
   // Portfolio
-  "portfolio.monthlyReturn": "本月收益",
-  "portfolio.excessReturn": "跑赢指数",
-  "portfolio.maxDrawdown": "最大回撤",
-  "portfolio.sharpeRatio": "夏普比率",
-  "portfolio.totalAssets": "总资产",
-  "portfolio.cashRatio": "现金比例",
+  "portfolio.monthlyReturn": "研究组合区间收益",
+  "portfolio.excessReturn": "相对基准差值",
+  "portfolio.maxDrawdown": "研究回撤",
+  "portfolio.sharpeRatio": "研究夏普",
+  "portfolio.totalAssets": "研究组合规模",
+  "portfolio.cashRatio": "现金占比",
 
   // Stock pool
   "pool.quality": "优质基本面池",
@@ -141,10 +141,10 @@ const zh: Record<string, string> = {
   "signals.market": "市场",
   "signals.signal": "信号",
   "signals.strength": "强度",
-  "signals.position": "建议仓位",
-  "signals.entryPrice": "入场价",
-  "signals.targetPrice": "目标价",
-  "signals.stopLoss": "止损价",
+  "signals.position": "研究仓位",
+  "signals.entryPrice": "观察价",
+  "signals.targetPrice": "模型观察价",
+  "signals.stopLoss": "风险警戒价",
   "signals.holdingPeriod": "持有期",
   "signals.latestPrice": "最新价",
   "signals.action": "操作",
@@ -175,11 +175,11 @@ const zh: Record<string, string> = {
   "stock.marketCap": "市值",
   "stock.signalType": "信号类型",
   "stock.signalStrength": "信号强度",
-  "stock.suggestedPosition": "建议仓位",
+  "stock.suggestedPosition": "研究仓位",
   "stock.holdingPeriod": "持有期",
-  "stock.entryPrice": "入场价",
-  "stock.targetPrice": "目标价",
-  "stock.stopLoss": "止损价",
+  "stock.entryPrice": "参考价",
+  "stock.targetPrice": "模型观察价",
+  "stock.stopLoss": "风险警戒价",
   "stock.signalLogic": "信号逻辑",
   "stock.riskWarning": "风险提示",
   "stock.brokerReports": "券商研报（来源：东方财富）",
@@ -359,6 +359,7 @@ const zh: Record<string, string> = {
   // Overview
   "admin.stockCount": "股票总数",
   "admin.signalCount": "信号总数",
+  "admin.scoreCount": "评分总数",
   "admin.userCount": "用户总数",
   "admin.reportCount": "报告总数",
   "admin.dbSizeLabel": "数据库大小",
@@ -410,9 +411,9 @@ const zh: Record<string, string> = {
   // Signals
   "admin.signalSearch": "搜索股票代码或名称...",
   "admin.signal": "信号",
-  "admin.entryPrice": "入场价",
-  "admin.targetPrice": "目标价",
-  "admin.stopLoss": "止损价",
+  "admin.entryPrice": "参考价",
+  "admin.targetPrice": "模型观察价",
+  "admin.stopLoss": "风险警戒价",
   "admin.void": "作废",
   "admin.signalUpdated": "信号已更新",
   "admin.signalDeleted": "信号已删除",
@@ -459,7 +460,6 @@ const zh: Record<string, string> = {
   "admin.signalVoided": "{type} 信号已作废",
   "admin.configSaved": "{provider} 配置已保存",
   "admin.totalItems": "共 {total} 条",
-  "common.retry": "重试",
   "error.pageError": "页面出现错误",
   "error.unexpected": "发生了一个意外错误",
   "error.backHome": "返回首页",
@@ -474,8 +474,6 @@ const zh: Record<string, string> = {
   // Pagination
   "admin.prevPage": "上一页",
   "admin.nextPage": "下一页",
-  "admin.totalItems": "共 {total} 条",
-
   // Backtest
   "backtest.title": "策略回测",
   "backtest.strategy": "策略",

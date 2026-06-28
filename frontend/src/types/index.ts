@@ -8,8 +8,10 @@ export interface MarketIndex {
 
 export interface StrategySummary {
   market_status: string;
+  market_status_label?: string;
   suggested_position: string;
   core_strategy: string;
+  judgement_basis?: string[];
   risk_warning: string;
 }
 
@@ -72,6 +74,20 @@ export interface DashboardData {
   portfolio_summary: PortfolioSummary;
   stock_pools: Record<string, StockPoolItem[]>;
   risk_alerts: RiskAlert[];
+  meta?: {
+    signal_date?: string;
+    generated_at?: string;
+    cache_mode?: string;
+    cache_ttl_seconds?: number;
+    is_cached?: boolean;
+    available_dates?: string[];
+    view_date?: string;
+  };
+}
+
+export interface DashboardAvailableDates {
+  available_dates: string[];
+  latest_date: string | null;
 }
 
 export interface StockSearchResult {
@@ -111,10 +127,52 @@ export interface SignalListResponse {
   items: SignalItem[];
 }
 
+export interface StockLibraryItem {
+  stock_id: number;
+  symbol: string;
+  name: string;
+  market: string;
+  exchange: string;
+  industry?: string | null;
+  rating: string | null;
+  rating_label?: string | null;
+  signal_type?: string | null;
+  signal_label?: string | null;
+  signal_strength?: number | null;
+  total_score: number | null;
+  quality_score: number | null;
+  valuation_score: number | null;
+  growth_score: number | null;
+  trend_score: number | null;
+  risk_score: number | null;
+  latest_close: number | null;
+  change_pct: number | null;
+  updated_at: string | null;
+  score_date?: string | null;
+  signal_date?: string | null;
+  reason_summary?: string | null;
+  risk_flags?: string[];
+}
+
+export interface StockLibraryResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: StockLibraryItem[];
+  summary: {
+    rated_stocks: number;
+    a_share: number;
+    hk: number;
+    highest_score: number;
+    risk_elevated: number;
+  };
+}
+
 export interface ReportItem {
   id: number;
   report_date: string;
   report_type: string;
+  style?: string | null;
   title: string;
   summary: string;
   created_at: string;
@@ -159,6 +217,8 @@ export interface FinancialMetricItem {
   roe: number | null;
   roa: number | null;
   debt_ratio: number | null;
+  operating_cashflow?: number | null;
+  free_cashflow?: number | null;
   eps: number | null;
   book_value_per_share: number | null;
 }
@@ -171,8 +231,10 @@ export interface ScoreDetail {
   trend: number;
   risk: number;
   rating: string;
+  rating_label?: string;
   reason: string;
   date: string;
+  trace?: Record<string, unknown>;
 }
 
 export interface StockDetail {
@@ -201,9 +263,19 @@ export interface StockDetail {
   price_history: PriceHistory[];
   financial_metrics: FinancialMetricItem[];
   technical_indicators: Record<string, any> | null;
+  data_source?: Record<string, string>;
+  latest_updates?: {
+    price?: string | null;
+    financial?: string | null;
+    technical?: string | null;
+    score?: string | null;
+    signal?: string | null;
+  };
+  missing_fields?: string[];
   score: ScoreDetail | null;
   signal: {
     type: string;
+    type_label?: string;
     strength: number;
     position: number;
     entry_price: number | null;
@@ -213,6 +285,8 @@ export interface StockDetail {
     logic: Record<string, any> | null;
     risk: Record<string, any> | null;
     date: string;
+    source?: string;
+    market?: string;
   } | null;
   reports: ResearchReportItem[];
 }
@@ -281,6 +355,15 @@ export interface PoolItem {
   pb?: number;
   volatility?: number;
   price_change?: number;
+  risk_flags?: string[];
+  explanation?: {
+    entry_reason: string;
+    advantages: string[];
+    risks: string[];
+    observation: string;
+    flags: string[];
+    incomplete: boolean;
+  };
 }
 
 export interface PoolResponse {
@@ -288,6 +371,16 @@ export interface PoolResponse {
   count: number;
   date: string;
   items: PoolItem[];
+  has_more?: boolean;
+  meta?: {
+    name: string;
+    positioning: string;
+    rules: string[];
+    scenario: string;
+    risks: string[];
+    data_updated_at: string | null;
+    research_only: boolean;
+  };
 }
 
 // ==================== 报告列表 ====================
@@ -344,6 +437,88 @@ export interface NotificationConfig {
 
 export interface ApiMessage {
   message: string;
+  id?: number;
+  title?: string;
+  type?: string;
+  style?: string | null;
+}
+
+export interface RuntimeInfo {
+  status: string;
+  database: string;
+  redis: string;
+  provider_mode: "live" | "mock";
+  db_size: string;
+  api_configured: {
+    enabled: number;
+    total: number;
+  };
+  latest_updates: {
+    prices: string | null;
+    scores: string | null;
+    signals: string | null;
+    reports: string | null;
+    research_reports: string | null;
+    settings: string | null;
+    api_logs: string | null;
+  };
+  counts: {
+    stocks: number;
+    prices: number;
+    scores: number;
+    signals: number;
+    reports: number;
+    research_reports: number;
+  };
+  notes: string[];
+  data_mode?: string;
+  provider?: string;
+  cache_mode?: string;
+  app_env?: string;
+  db_path?: string;
+  security?: {
+    default_password_warning?: boolean;
+  };
+  latest_error?: {
+    endpoint: string | null;
+    status_code: number | null;
+    error_msg: string | null;
+    called_at: string | null;
+  };
+}
+
+export interface BacktestMeta {
+  market: string;
+  earliest_date: string | null;
+  latest_date: string | null;
+  trade_day_count: number;
+  sample_count: number;
+  price_count: number;
+  fees: {
+    commission_rate: number;
+    stamp_duty_rate: number;
+    transfer_fee_rate: number;
+    min_commission: number;
+    slippage_rate: number;
+  };
+  assumptions: {
+    has_slippage: boolean;
+    has_commission: boolean;
+    handles_limit_lock: boolean;
+    handles_suspension: boolean;
+    benchmark: string;
+  };
+}
+
+export interface OperationLogItem {
+  time: string | null;
+  type: string;
+  status: string;
+  actor: string;
+  duration_ms: number;
+  summary: string;
+  error: string | null;
+  status_code: number;
 }
 
 // ==================== 管理后台 - API 配置 ====================

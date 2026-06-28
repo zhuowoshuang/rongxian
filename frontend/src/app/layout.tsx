@@ -8,13 +8,17 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import ToastContainer from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
-  title: "清数智算 - A股港股智能分析系统",
-  description: "A股 + 港股中长期基本面选股与交易信号报告系统",
+  title: "清数智算 - 智能投研工作台",
+  description: "面向 A 股与港股研究场景的智能投研工作台",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" className="dark" suppressHydrationWarning>
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className="antialiased">
         <ErrorBoundary>
           <ThemeProvider>

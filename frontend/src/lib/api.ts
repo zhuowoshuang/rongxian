@@ -4,9 +4,11 @@
  */
 import type {
   DashboardData,
+  DashboardAvailableDates,
   StockSearchResult,
   StockDetail,
   SignalListResponse,
+  StockLibraryResponse,
   ResearchReportItem,
   BacktestResult,
   SimulateHolding,
@@ -29,13 +31,40 @@ import type {
   AdminUserItem,
   FetchStockResult,
   AdminTableDataResponse,
+  RuntimeInfo,
+  BacktestMeta,
+  OperationLogItem,
 } from "@/types";
 
 const API_BASE = "/api";
+const DIRECT_API_BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:4210"}/api`;
 
-async function fetchAPI<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
+function mapApiError(status: number, statusText: string, detail: string): string {
+  if (detail) return detail;
+  if (status === 400) return "请求参数无效，请检查后重试。";
+  if (status === 401) return "登录状态已失效，请重新登录。";
+  if (status === 403) return "当前账号无权访问该内容。";
+  if (status === 404) return "请求的内容不存在或尚未接通。";
+  if (status === 408) return "请求超时，请稍后重试。";
+  if (status === 429) return "请求过于频繁，请稍后再试。";
+  if (status >= 500) return "后端服务暂时不可用，请稍后重新加载。";
+  return `接口请求失败（${status} ${statusText}）`;
+}
+
+type FetchApiOptions = RequestInit & {
+  timeoutMs?: number;
+  timeoutErrorMessage?: string;
+  useDirectBase?: boolean;
+};
+
+function buildApiUrl(path: string, useDirectBase?: boolean): string {
+  const base = useDirectBase ? DIRECT_API_BASE : API_BASE;
+  return `${base}${path}`;
+}
+
+async function fetchAPI<T>(path: string, options?: FetchApiOptions): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const { timeoutMs, ...fetchOptions } = options || {};
+  const { timeoutMs, timeoutErrorMessage, useDirectBase, ...fetchOptions } = options || {};
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(fetchOptions.headers as Record<string, string> || {}),
@@ -46,7 +75,7 @@ async function fetchAPI<T>(path: string, options?: RequestInit & { timeoutMs?: n
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs || 15000);
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(buildApiUrl(path, useDirectBase), {
       ...fetchOptions,
       headers,
       signal: controller.signal,
@@ -62,11 +91,11 @@ async function fetchAPI<T>(path: string, options?: RequestInit & { timeoutMs?: n
       // 尝试解析后端返回的错误详情
       let detail = "";
       try { const body = await res.json(); detail = body.detail || ""; } catch {}
-      throw new Error(detail || `API Error: ${res.status} ${res.statusText}`);
+      throw new Error(mapApiError(res.status, res.statusText, detail));
     }
     return res.json();
   } catch (e: any) {
-    if (e.name === "AbortError") throw new Error("请求超时，报告生成耗时较长，请稍后再试");
+    if (e.name === "AbortError") throw new Error(timeoutErrorMessage || "请求超时，请稍后再试。");
     throw e;
   } finally {
     clearTimeout(timeout);
@@ -75,7 +104,11 @@ async function fetchAPI<T>(path: string, options?: RequestInit & { timeoutMs?: n
 
 // ==================== 仪表盘 ====================
 
-export const getDashboard = () => fetchAPI<DashboardData>("/dashboard");
+export const getDashboard = (date?: string) =>
+  fetchAPI<DashboardData>(`/dashboard${date ? `?date=${encodeURIComponent(date)}` : ""}`, { timeoutMs: 60000 });
+
+export const getDashboardAvailableDates = () =>
+  fetchAPI<DashboardAvailableDates>("/dashboard/available-dates");
 
 // ==================== 股票 ====================
 
@@ -92,6 +125,20 @@ export const getStockCount = () =>
 
 export const getStockDetail = (symbol: string) =>
   fetchAPI<StockDetail>(`/stocks/${symbol}`);
+
+export const getStockLibrary = (params: {
+  market?: string;
+  rating?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+} = {}) => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => {
+    if (val !== undefined && val !== null && val !== "") searchParams.set(key, String(val));
+  });
+  return fetchAPI<StockLibraryResponse>(`/stocks?${searchParams.toString()}`);
+};
 
 // ==================== 信号 ====================
 
@@ -139,12 +186,14 @@ export const generateReport = (params: { report_type: string; stock_symbol?: str
   fetchAPI<ApiMessage>(`/reports/generate?report_type=${params.report_type}${params.stock_symbol ? `&stock_symbol=${params.stock_symbol}` : ""}${params.style ? `&style=${params.style}` : ""}`, {
     method: "POST",
     timeoutMs: 120000,
+    timeoutErrorMessage: "报告生成超时，请检查后端服务状态后重试。",
   });
 
 export const generateStyleReport = (style: string) =>
   fetchAPI<ApiMessage>(`/reports/generate-style?style=${style}`, {
     method: "POST",
     timeoutMs: 120000,
+    timeoutErrorMessage: "风格研究报告生成超时，请稍后重试。",
   });
 
 export const downloadReportPdf = async (reportId: number, filename: string) => {
@@ -153,12 +202,18 @@ export const downloadReportPdf = async (reportId: number, filename: string) => {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeout = setTimeout(() => controller.abort(), 120000);  // 2 分钟超时
   try {
     const res = await fetch(`/api/reports/${reportId}/pdf`, { headers, signal: controller.signal });
-    if (!res.ok) throw new Error("PDF下载失败");
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(errText || `PDF下载失败 (${res.status})`);
+    }
 
     const blob = await res.blob();
+    if (blob.size < 100) {
+      throw new Error("PDF 内容为空");
+    }
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -188,12 +243,21 @@ export const runBacktest = (params: {
   fetchAPI<BacktestResult>("/backtest/run", {
     method: "POST",
     body: JSON.stringify(params),
+    timeoutMs: 120000,
+    timeoutErrorMessage: "回测请求超时，请检查后端服务状态后重试。",
   });
 
 export const simulatePortfolio = (holdings: SimulateHolding[]) =>
   fetchAPI<SimulateResult>("/backtest/simulate", {
     method: "POST",
     body: JSON.stringify({ holdings }),
+    timeoutMs: 120000,
+    timeoutErrorMessage: "组合模拟请求超时，请检查后端服务状态后重试。",
+  });
+
+export const getBacktestMeta = (market: string = "A_SHARE") =>
+  fetchAPI<BacktestMeta>(`/backtest/meta?market=${market}`, {
+    timeoutMs: 10000,
   });
 
 // ==================== 设置 ====================
@@ -201,6 +265,8 @@ export const simulatePortfolio = (holdings: SimulateHolding[]) =>
 export const getSettings = () => fetchAPI<Record<string, { value: string; description: string }>>("/settings");
 
 export const getNotificationConfig = () => fetchAPI<Record<string, string>>("/settings/notification");
+
+export const getRuntimeInfo = () => fetchAPI<RuntimeInfo>("/settings/runtime-info");
 
 export const updateNotificationConfig = (config: {
   email_smtp_host?: string;
@@ -232,6 +298,9 @@ export const saveSetting = (key: string, value: string) =>
 export const getAdminStats = () =>
   fetchAPI<AdminStats>("/admin/stats");
 
+export const getAdminSystemStatus = () =>
+  fetchAPI<RuntimeInfo>("/admin/system-status");
+
 export const getAdminUsers = () =>
   fetchAPI<AdminUserItem[]>("/admin/users");
 
@@ -250,7 +319,7 @@ export const getAdminTables = () =>
   fetchAPI<AdminTableInfo[]>("/admin/tables");
 
 export const getAdminTableData = (tableName: string, page: number = 1, pageSize: number = 50) =>
-  fetchAPI<AdminTableData>(`/admin/tables/${tableName}?page=${page}&page_size=${pageSize}`);
+  fetchAPI<AdminTableDataResponse>(`/admin/tables/${tableName}?page=${page}&page_size=${pageSize}`);
 
 // ==================== API管理 ====================
 
@@ -282,6 +351,12 @@ export const getApiLogs = (params: { page?: number; page_size?: number; user_id?
 
 export const getApiStats = () =>
   fetchAPI<ApiStatsResponse>("/admin/api-stats");
+
+export const getOperationLogs = (limit: number = 30) =>
+  fetchAPI<{ items: OperationLogItem[] }>(`/admin/operation-logs?limit=${limit}`);
+
+export const getOperationLogSummary = () =>
+  fetchAPI<Record<string, any>>("/admin/operation-logs/summary");
 
 // ==================== 管理-股票管理 ====================
 
