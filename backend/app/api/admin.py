@@ -1,8 +1,9 @@
 """管理员 API"""
 import os
 import time
-from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, date, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect, func
 from pydantic import BaseModel
@@ -10,8 +11,14 @@ from typing import Optional
 
 from app.db.session import get_db
 from app.models.user import User
-from app.models.api_config import ApiConfig, UserApiQuota, ApiCallLog
+from app.models.api_config import ApiConfig, UserApiQuota, ApiCallLog, UserApiConfig, OperationLog
+from app.models.report import Report, ReportEvent, BacktestTask
+from app.models.watchlist import WatchlistItem, WatchlistSnapshot
 from app.api.auth import get_current_admin
+from app.services.api_config_test import test_provider_config
+from app.services.audit import action_label, log_operation, status_label
+from app.services.quota import admin_usage_rankings, check_quota as service_check_quota, usage_for_user
+from app.services.score_diagnostics import diagnose_real_scores
 from app.services.system_status import build_system_status
 
 router = APIRouter(prefix="/api/admin", tags=["管理"])
@@ -20,6 +27,10 @@ router = APIRouter(prefix="/api/admin", tags=["管理"])
 class UserUpdateRequest(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class ResetPasswordRequest(BaseModel):
+    password: str
 
 
 @router.get("/stats")
@@ -67,6 +78,66 @@ def get_system_status(admin: User = Depends(get_current_admin), db: Session = De
     return build_system_status(db)
 
 
+@router.get("/data-coverage")
+def get_data_coverage(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """真实数据覆盖中心摘要。"""
+    from app.services.data_coverage import summarize_market_data_coverage
+    from app.services.real_pipeline import get_recent_refresh_job_runs, real_pipeline_status
+
+    summary = summarize_market_data_coverage(db)
+    status = build_system_status(db)
+    return {
+        **summary,
+        "real_pipeline_status": real_pipeline_status(db),
+        "recent_refresh_jobs": get_recent_refresh_job_runs(db, limit=10),
+        "coverage_message": status.get("coverage_message"),
+        "financial_failure_top_reasons": _top_failure_reasons(status.get("recent_refresh_jobs", []), "financial_failure_reasons"),
+        "technical_failure_top_reasons": _top_failure_reasons(status.get("recent_refresh_jobs", []), "technical_failure_reasons"),
+    }
+
+
+@router.get("/score-diagnostics")
+def get_score_diagnostics(
+    score_date: Optional[date] = Query(None),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """真实评分解释摘要，不改评分，只解释当前结果结构。"""
+    return diagnose_real_scores(db, score_date=score_date)
+
+
+def _top_failure_reasons(jobs: list[dict], key: str, limit: int = 5) -> list[dict[str, int | str]]:
+    from collections import Counter
+
+    counter: Counter[str] = Counter()
+    for job in jobs:
+        summary = job.get("failure_summary") or {}
+        reasons = summary.get(key) or {}
+        for reason, count in reasons.items():
+            counter[str(reason)] += int(count or 0)
+    return [{"reason": reason, "count": count} for reason, count in counter.most_common(limit)]
+
+
+@router.post("/run-real-pipeline")
+def admin_run_real_pipeline(
+    limit: int = Query(30, ge=1, le=300),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """管理员手动触发真实小样本流水线。"""
+    from app.services.real_pipeline import run_real_pipeline_sample
+
+    result = run_real_pipeline_sample(
+        db,
+        limit=limit,
+        trigger_source="admin_manual",
+        created_by=admin.username,
+    )
+    if result.get("status") == "skipped_locked":
+        raise HTTPException(status_code=409, detail="真实流水线正在运行，请稍后再试")
+    return result
+
+
 @router.get("/users")
 def list_users(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """列出所有用户"""
@@ -75,15 +146,70 @@ def list_users(admin: User = Depends(get_current_admin), db: Session = Depends(g
         {
             "id": u.id,
             "username": u.username,
+            "phone": u.phone,
+            "user_id": u.user_id or u.username,
             "display_name": u.display_name,
             "email": u.email,
             "role": u.role,
+            "status": u.status or ("active" if u.is_active else "disabled"),
             "is_active": u.is_active,
+            "report_count": db.query(Report).filter(Report.user_id == u.id).count(),
+            "api_config_count": db.query(UserApiConfig).filter(UserApiConfig.owner_user_id == u.id).count(),
+            "pdf_downloads": db.query(ReportEvent).filter(ReportEvent.user_id == u.id, ReportEvent.format == "pdf", ReportEvent.action == "download").count(),
+            "png_downloads": db.query(ReportEvent).filter(ReportEvent.user_id == u.id, ReportEvent.format == "png", ReportEvent.action == "download").count(),
+            "html_views": db.query(ReportEvent).filter(ReportEvent.user_id == u.id, ReportEvent.format == "html", ReportEvent.action == "view").count(),
+            "last_report_at": str(db.query(func.max(Report.created_at)).filter(Report.user_id == u.id).scalar() or ""),
             "created_at": str(u.created_at) if u.created_at else None,
+            "last_login_at": str(u.last_login_at) if u.last_login_at else None,
             "updated_at": str(u.updated_at) if u.updated_at else None,
         }
         for u in users
     ]
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_user_password(user_id: int, req: ResetPasswordRequest, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    from app.api.auth import hash_password
+    if len(req.password) < 8:
+        raise HTTPException(status_code=400, detail="新密码至少 8 位")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    user.password_hash = hash_password(req.password)
+    db.commit()
+    return {"status": "ok", "message": "密码已重置"}
+
+
+@router.get("/users/export")
+def export_users(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    from openpyxl import Workbook
+    from io import BytesIO
+    import urllib.parse
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "用户运营统计"
+    headers = ["手机号", "用户ID", "角色", "状态", "注册时间", "最近登录", "报告总数", "PDF下载", "PNG下载", "HTML查看", "API配置数", "最近报告时间"]
+    ws.append(headers)
+    for u in db.query(User).order_by(User.id).all():
+        ws.append([
+            u.phone,
+            u.user_id or u.username,
+            u.role,
+            u.status or ("active" if u.is_active else "disabled"),
+            str(u.created_at) if u.created_at else "",
+            str(u.last_login_at) if u.last_login_at else "",
+            db.query(Report).filter(Report.user_id == u.id).count(),
+            db.query(ReportEvent).filter(ReportEvent.user_id == u.id, ReportEvent.format == "pdf", ReportEvent.action == "download").count(),
+            db.query(ReportEvent).filter(ReportEvent.user_id == u.id, ReportEvent.format == "png", ReportEvent.action == "download").count(),
+            db.query(ReportEvent).filter(ReportEvent.user_id == u.id, ReportEvent.format == "html", ReportEvent.action == "view").count(),
+            db.query(UserApiConfig).filter(UserApiConfig.owner_user_id == u.id).count(),
+            str(db.query(func.max(Report.created_at)).filter(Report.user_id == u.id).scalar() or ""),
+        ])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = "用户运营统计.xlsx"
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(filename)}"})
 
 
 @router.put("/users/{user_id}")
@@ -231,15 +357,18 @@ def list_api_configs(admin: User = Depends(get_current_admin), db: Session = Dep
 @router.post("/api-configs")
 def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """创建或更新API配置"""
-    from app.core.config import encrypt_api_key
+    from app.core.config import ApiKeyCryptoError, encrypt_api_key
 
     start_time = time.time()
 
     existing = db.query(ApiConfig).filter(ApiConfig.provider == req.provider).first()
     if existing:
         if req.display_name is not None: existing.display_name = req.display_name
-        if req.api_key is not None and req.api_key != "***": existing.api_key = encrypt_api_key(req.api_key)
-        if req.api_secret is not None and req.api_secret != "***": existing.api_secret = encrypt_api_key(req.api_secret)
+        try:
+            if req.api_key is not None and req.api_key != "***": existing.api_key = encrypt_api_key(req.api_key)
+            if req.api_secret is not None and req.api_secret != "***": existing.api_secret = encrypt_api_key(req.api_secret)
+        except ApiKeyCryptoError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if req.base_url is not None: existing.base_url = req.base_url
         if req.is_enabled is not None: existing.is_enabled = req.is_enabled
         if req.daily_limit is not None: existing.daily_limit = req.daily_limit
@@ -249,17 +378,20 @@ def create_or_update_api_config(req: ApiConfigRequest, admin: User = Depends(get
         log_api_call(db, admin.id, admin.username, "system", f"/api/admin/api-configs/{existing.id}", "POST", 200, int((time.time() - start_time) * 1000), None)
         return {"status": "ok", "message": f"{req.provider} 配置已更新", "id": existing.id}
     else:
-        config = ApiConfig(
-            provider=req.provider,
-            display_name=req.display_name or req.provider,
-            api_key=encrypt_api_key(req.api_key) if req.api_key else None,
-            api_secret=encrypt_api_key(req.api_secret) if req.api_secret else None,
-            base_url=req.base_url,
-            is_enabled=req.is_enabled if req.is_enabled is not None else True,
-            daily_limit=req.daily_limit or 1000,
-            rate_limit=req.rate_limit or 10,
-            config_json=req.config_json,
-        )
+        try:
+            config = ApiConfig(
+                provider=req.provider,
+                display_name=req.display_name or req.provider,
+                api_key=encrypt_api_key(req.api_key) if req.api_key else None,
+                api_secret=encrypt_api_key(req.api_secret) if req.api_secret else None,
+                base_url=req.base_url,
+                is_enabled=req.is_enabled if req.is_enabled is not None else True,
+                daily_limit=req.daily_limit or 1000,
+                rate_limit=req.rate_limit or 10,
+                config_json=req.config_json,
+            )
+        except ApiKeyCryptoError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         db.add(config)
         db.commit()
         db.refresh(config)
@@ -860,6 +992,20 @@ def _log_to_summary(log: ApiCallLog | None) -> dict | None:
     }
 
 
+def _event_to_summary(event: ReportEvent | None) -> dict | None:
+    if not event:
+        return None
+    return {
+        "time": str(event.created_at) if event.created_at else None,
+        "actor": str(event.user_id or "system"),
+        "status": "ok",
+        "duration_ms": 0,
+        "summary": f"report_id={event.report_id} {event.action} {event.format}",
+        "error": None,
+        "status_code": 200,
+    }
+
+
 @router.get("/operation-logs")
 def get_operation_logs(
     limit: int = Query(30, ge=1, le=100),
@@ -902,11 +1048,262 @@ def get_operation_log_summary(admin: User = Depends(get_current_admin), db: Sess
     def latest_like(pattern: str):
         return db.query(ApiCallLog).filter(ApiCallLog.endpoint.like(pattern)).order_by(ApiCallLog.called_at.desc()).first()
 
+    def latest_event(fmt: str, action: str):
+        return db.query(ReportEvent).filter(ReportEvent.format == fmt, ReportEvent.action == action).order_by(ReportEvent.created_at.desc()).first()
+
     return {
         "latest_stock_sync": _log_to_summary(latest_like("%/stocks/sync%")),
         "latest_report_generate": _log_to_summary(latest_like("/api/reports/generate%")),
+        "latest_html_view": _event_to_summary(latest_event("html", "view")),
+        "latest_png_export": _event_to_summary(latest_event("png", "download")),
         "latest_pdf_export": _log_to_summary(latest_like("/api/reports/%/pdf")),
         "latest_backtest": _log_to_summary(latest_like("/api/backtest/%")),
         "latest_error": _log_to_summary(db.query(ApiCallLog).filter(ApiCallLog.status_code >= 400).order_by(ApiCallLog.called_at.desc()).first()),
         "latest_admin_action": _log_to_summary(latest_like("/api/admin/%")),
     }
+
+
+@router.get("/usage-rankings")
+def get_usage_rankings(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    return admin_usage_rankings(db)
+
+
+@router.get("/watchlist-stats")
+def get_watchlist_stats(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    total_items = db.query(WatchlistItem).count()
+    total_users = db.query(func.count(func.distinct(WatchlistItem.user_id))).scalar() or 0
+    today_added = db.query(WatchlistItem).filter(func.date(WatchlistItem.created_at) == date.today()).count()
+
+    top_rows = (
+        db.query(
+            WatchlistItem.stock_code,
+            func.max(WatchlistItem.stock_name).label("stock_name"),
+            func.count(WatchlistItem.id).label("watch_count"),
+            func.max(WatchlistItem.industry).label("industry"),
+        )
+        .group_by(WatchlistItem.stock_code)
+        .order_by(func.count(WatchlistItem.id).desc(), WatchlistItem.stock_code.asc())
+        .limit(20)
+        .all()
+    )
+
+    latest_snapshot_subquery = (
+        db.query(
+            WatchlistSnapshot.watchlist_id.label("watchlist_id"),
+            func.max(WatchlistSnapshot.id).label("latest_id"),
+        )
+        .group_by(WatchlistSnapshot.watchlist_id)
+        .subquery()
+    )
+    recent_snapshot_count = (
+        db.query(WatchlistSnapshot)
+        .join(latest_snapshot_subquery, WatchlistSnapshot.id == latest_snapshot_subquery.c.latest_id)
+        .count()
+    )
+
+    industry_rows = (
+        db.query(
+            func.coalesce(WatchlistItem.industry, "未分类").label("industry"),
+            func.count(WatchlistItem.id).label("watch_count"),
+        )
+        .group_by(func.coalesce(WatchlistItem.industry, "未分类"))
+        .order_by(func.count(WatchlistItem.id).desc(), func.coalesce(WatchlistItem.industry, "未分类").asc())
+        .limit(8)
+        .all()
+    )
+
+    positive_volatility_count = 0
+    latest_snapshots = (
+        db.query(WatchlistSnapshot)
+        .join(latest_snapshot_subquery, WatchlistSnapshot.id == latest_snapshot_subquery.c.latest_id)
+        .all()
+    )
+    for snapshot in latest_snapshots:
+        try:
+            payload = json.loads(snapshot.volatility_signal_json or "{}")
+        except Exception:
+            payload = {}
+        if payload.get("signal") == "positive":
+            positive_volatility_count += 1
+
+    watch_created_subquery = (
+        db.query(
+            WatchlistItem.user_id.label("user_id"),
+            WatchlistItem.stock_code.label("stock_code"),
+            func.min(WatchlistItem.created_at).label("watched_at"),
+        )
+        .group_by(WatchlistItem.user_id, WatchlistItem.stock_code)
+        .subquery()
+    )
+
+    reports_after_watch = (
+        db.query(func.count(Report.id))
+        .join(
+            watch_created_subquery,
+            (watch_created_subquery.c.user_id == Report.user_id)
+            & (watch_created_subquery.c.stock_code == Report.stock_code),
+        )
+        .filter(Report.created_at >= watch_created_subquery.c.watched_at)
+        .scalar()
+        or 0
+    )
+    backtests_after_watch = (
+        db.query(func.count(BacktestTask.id))
+        .join(
+            watch_created_subquery,
+            (watch_created_subquery.c.user_id == BacktestTask.user_id)
+            & (watch_created_subquery.c.stock_code == BacktestTask.stock_code),
+        )
+        .filter(BacktestTask.created_at >= watch_created_subquery.c.watched_at)
+        .scalar()
+        or 0
+    )
+
+    return {
+        "summary": {
+            "total_items": total_items,
+            "total_users": total_users,
+            "today_added": today_added,
+            "snapshots_ready": recent_snapshot_count,
+            "high_volatility_watch_count": positive_volatility_count,
+            "reports_after_watch": int(reports_after_watch),
+            "backtests_after_watch": int(backtests_after_watch),
+        },
+        "top_watched": [
+            {
+                "stock_code": row.stock_code,
+                "stock_name": row.stock_name,
+                "watch_count": int(row.watch_count or 0),
+                "industry": row.industry,
+            }
+            for row in top_rows
+        ],
+        "industry_distribution": [
+            {"industry": row.industry, "watch_count": int(row.watch_count or 0)}
+            for row in industry_rows
+        ],
+    }
+
+
+def _serialize_audit_log(log: OperationLog) -> dict:
+    actor = log.phone or log.username or (str(log.user_id) if log.user_id else "系统")
+    return {
+        "id": log.id,
+        "user_id": log.user_id,
+        "phone": log.phone,
+        "username": log.username,
+        "role": log.role or "-",
+        "action": log.action,
+        "action_label": action_label(log.action),
+        "target_type": log.target_type,
+        "target_id": log.target_id,
+        "status": log.status,
+        "status_label": status_label(log.status),
+        "message": log.message or "",
+        "actor": actor,
+        "created_at": str(log.created_at) if log.created_at else None,
+        "ip": log.ip,
+    }
+
+
+def _audit_query(
+    db: Session,
+    range: str = "all",
+    user_keyword: str | None = None,
+    action: str | None = None,
+    status: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    query = db.query(OperationLog)
+    now = datetime.now()
+    if range == "7":
+        query = query.filter(OperationLog.created_at >= now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7))
+    elif range == "30":
+        query = query.filter(OperationLog.created_at >= now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=30))
+    elif range == "custom":
+        if start_date:
+            query = query.filter(func.date(OperationLog.created_at) >= start_date)
+        if end_date:
+            query = query.filter(func.date(OperationLog.created_at) <= end_date)
+    if user_keyword:
+        keyword = f"%{user_keyword}%"
+        conditions = [OperationLog.username.like(keyword), OperationLog.phone.like(keyword)]
+        if user_keyword.isdigit():
+            conditions.append(OperationLog.user_id == int(user_keyword))
+        query = query.filter(conditions[0] | conditions[1] | (conditions[2] if len(conditions) > 2 else conditions[0]))
+    if action:
+        query = query.filter(OperationLog.action == action)
+    if status:
+        query = query.filter(OperationLog.status == status)
+    return query
+
+
+@router.get("/audit-logs")
+def get_audit_logs(
+    range: str = Query("all"),
+    user_keyword: Optional[str] = Query(None),
+    action: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    query = _audit_query(db, range, user_keyword, action, status, start_date, end_date)
+    total = query.count()
+    logs = query.order_by(OperationLog.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {"total": total, "page": page, "page_size": page_size, "items": [_serialize_audit_log(log) for log in logs]}
+
+
+@router.get("/audit-logs/export")
+def export_audit_logs(
+    request: Request,
+    range: str = Query("all"),
+    user_keyword: Optional[str] = Query(None),
+    action: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    from io import BytesIO
+    import urllib.parse
+    from openpyxl import Workbook
+
+    query = _audit_query(db, range, user_keyword, action, status, start_date, end_date)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "审计日志"
+    ws.append(["时间", "用户", "角色", "操作", "对象", "状态", "摘要"])
+    for item in query.order_by(OperationLog.created_at.desc()).limit(5000).all():
+        row = _serialize_audit_log(item)
+        ws.append([row["created_at"], row["actor"], row["role"], row["action_label"], f'{row["target_type"]}:{row["target_id"] or "-"}', row["status_label"], row["message"]])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    log_operation(db, user=admin, action="admin_export_audit_logs", target_type="audit", message="export audit logs", request=request)
+    filename = "审计日志.xlsx"
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(filename)}"})
+
+
+@router.post("/api-configs/{config_id}/check")
+def check_api_config(config_id: int, request: Request, admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    from app.core.config import decrypt_api_key
+
+    config = db.query(ApiConfig).filter(ApiConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="配置不存在")
+    model_name = None
+    if config.config_json and "model" in config.config_json:
+        model_name = config.config_json
+    try:
+        api_key = decrypt_api_key(config.api_key)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result = test_provider_config(config.provider, config.base_url, model_name, api_key)
+    log_operation(db, user=admin, action="admin_api_config_test", target_type="api_config", target_id=config.id, status="failed" if result.status == "failed" else "success", message=result.message, request=request)
+    return {"status": result.status, "message": result.message}

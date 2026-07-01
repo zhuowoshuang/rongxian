@@ -1,0 +1,52 @@
+{
+  "_fixture": true,
+  "_description": "300866 离线契约测试 fixture，不用于真实业务逻辑",
+  "symbol": "300866",
+  "dataStatus": "PARTIAL",
+  "missingFields": ["realtimeQuote", "industry", "financials"],
+  "errorMessage": "Fixture: 模拟非交易时段 K线 fallback 场景",
+  "sourceSummary": {
+    "quoteSource": "AData-Kline-Fallback",
+    "klineSource": "AData-EastMoney",
+    "financialsSource": "AData-EastMoney-F10",
+    "searchSource": "AData-code-csv"
+  },
+  "quote": {
+    "symbol": "300866",
+    "name": "安克创新",
+    "market": "A",
+    "exchange": "SZ",
+    "tradeDate": "2026-06-30",
+    "price": 104.50,
+    "change": -4.52,
+    "changePct": -4.15,
+    "open": 108.12,
+    "high": 110.82,
+    "low": 103.85,
+    "preClose": 109.02,
+    "volume": 6217100,
+    "amount": 658350091.34,
+    "turnoverRate": 2.02,
+    "source": "AData-Kline-Fallback",
+    "isRealtime": false,
+    "quoteStatusReason": "实时行情为空，使用最新K线构造延迟行情",
+    "dataStatus": "PARTIAL",
+    "missingFields": ["realtimeQuote"],
+    "errorMessage": null
+  },
+  "kline": {
+    "symbol": "300866",
+    "period": "daily",
+    "items": [
+      {"date": "2026-06-29", "open": 109.00, "high": 110.00, "low": 107.50, "close": 109.02, "volume": 5000000, "amount": 545000000.00, "turnoverRate": 1.5},
+      {"date": "2026-06-30", "open": 108.12, "high": 110.82, "low": 103.85, "close": 104.50, "volume": 6217100, "amount": 658350091.34, "turnoverRate": 2.02}
+    ],
+    "source": "adata",
+    "dataStatus": "OK",
+    "missingFields": [],
+    "errorMessage": null
+  },
+  "financials": [
+    {"period": "2026-03-31", "revenue": 6123456789.00, "netProfit": 471594189.71, "roe": 4.35, "eps": 0.88, "grossMargin": 45.2, "netMargin": 7.7, "debtRatio": 35.8, "source": "adata-eastmoney", "dataStatus": "OK", "missingFields": [], "errorMessage": null}
+  ]
+}

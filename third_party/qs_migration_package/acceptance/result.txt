@@ -1,0 +1,69 @@
+C:\Users\dazhu\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+
+============================================================
+  1. Manifest
+============================================================
+  [PASS] manifest OK: qs-adata-migration-package v1.2.0
+  [PASS] manifest
+
+============================================================
+  2. Contract
+============================================================
+  [PASS] OpenAPI: 5 paths
+  [PASS] quote_300866.json
+  [PASS] qs_stock_bundle_300866.json
+  [PASS] TS types OK
+  [PASS] Contract consistent
+  [PASS] contract
+
+============================================================
+  3. Importability
+============================================================
+  [PASS] import qs_adapter OK
+  [PASS] import qs_backend_bridge OK
+  [PASS] import get_stock_data_bundle OK
+  [INFO] adata available
+  [PASS] Importability OK
+  [PASS] importability
+
+============================================================
+  4. Status Semantics
+============================================================
+HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=50&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f12%2Cf14&_=1623833739532 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
+  [WARN] 300866: EMPTY (network/env issue)
+HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=50&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f12%2Cf14&_=1623833739532 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
+  [PASS] 999999: EMPTY
+  [PASS] abc: ERROR
+  [WARN] quote not in fallback mode (source=adata)
+  [PASS] missingFields granularity OK
+  [PASS] Status Semantics OK
+  [PASS] status_semantics
+
+============================================================
+  5. FastAPI Template
+============================================================
+  [PASS] FastAPI 模板: 5/5 路由 OK
+  [INFO] FastAPI 可用，可进行端到端测试
+  [PASS] fastapi_template
+
+============================================================
+  6. No Fake Data
+============================================================
+  [PASS] No fake data detected
+  [PASS] no_fake_data
+
+============================================================
+  7. Live Smoke (300866)
+============================================================
+  [WARN] smoke_test failed: Command '['C:\\Users\\dazhu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', '-X', 'utf8', 'F:\\tools\\2.2adata\\qs_migration_package\\python\\qs_backend_bridge\\smoke_test.py', '--symbol', '300866', '--output-dir', 'F:\\tools\\2.2adata\\qs_migration_package\\examples']' timed out after 180 seconds
+
+============================================================
+  Summary
+============================================================
+  PASS: 6  ['manifest', 'contract', 'importability', 'status_semantics', 'fastapi_template', 'no_fake_data']
+  WARN: 1  ['live_smoke']
+  FAIL: 0  []
+
+  *** All passed
+  Status: READY

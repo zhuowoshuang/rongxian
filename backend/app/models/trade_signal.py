@@ -16,6 +16,7 @@ class TradeSignal(Base):
     target_price = Column(Float, comment="目标价")
     stop_loss_price = Column(Float, comment="止损价")
     holding_period = Column(String(50), comment="建议持有期")
+    signal_source = Column(String(32), default="unknown_legacy", nullable=True, comment="信号来源: real_calculated / quick_seed_demo / unknown_legacy")
     logic_json = Column(JSON, comment="信号逻辑 JSON")
     risk_json = Column(JSON, comment="风险提示 JSON")
     status = Column(String(20), default="ACTIVE", comment="状态: ACTIVE/EXPIRED/EXECUTED")

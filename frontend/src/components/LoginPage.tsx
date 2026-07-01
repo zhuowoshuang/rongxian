@@ -1,182 +1,318 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Lock, Phone, UserRound } from "lucide-react";
+
 import { useAuth } from "@/lib/auth";
-import { useTranslation } from "@/lib/i18n";
-import { Shield, Eye, EyeOff } from "lucide-react";
+import { clearAuthNotice, getAuthNotice } from "@/lib/api";
+
+const MAINLAND_PHONE_RE = /^(?:\+?86)?1\d{10}$/;
+
+function validatePhone(value: string): string | null {
+  const normalized = value.replace(/\s+/g, "").trim();
+  if (!normalized) return "手机号不能为空";
+  if (!MAINLAND_PHONE_RE.test(normalized)) return "手机号格式不正确，请输入 11 位手机号";
+  return null;
+}
+
+function validateUserId(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized) return "用户ID不能为空";
+  if (normalized.length < 2 || normalized.length > 32) return "用户ID长度需在 2-32 个字符之间";
+  if (/[<>{}'";\\]/.test(normalized)) return "用户ID仅支持中文、英文、数字、下划线和中划线";
+  return null;
+}
+
+function validatePassword(value: string): string | null {
+  if (!value) return "密码不能为空";
+  if (value.length < 8) return "密码长度至少 8 位";
+  return null;
+}
 
 export default function LoginPage() {
-  const { login, register } = useAuth();
-  const { t } = useTranslation();
+  const router = useRouter();
+  const { user, loading: authLoading, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [phone, setPhone] = useState("");
+  const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [redirectTo, setRedirectTo] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setRedirectTo(new URLSearchParams(window.location.search).get("redirect"));
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      const target = redirectTo && redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+      router.replace(target);
+    }
+  }, [authLoading, redirectTo, router, user]);
+
+  useEffect(() => {
+    const savedNotice = getAuthNotice();
+    if (savedNotice === "expired") {
+      setNotice("登录已过期，请重新登录后查看真实数据。");
+    } else if (savedNotice === "logged_out") {
+      setNotice("你已退出登录，如需继续查看真实数据请重新登录。");
+    } else if (savedNotice === "unauthorized") {
+      setNotice("当前账号无权访问该页面，请使用有权限的账号重新登录。");
+    }
+  }, []);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (loading) return;
+
     setError("");
+    setNotice("");
+    clearAuthNotice();
     setLoading(true);
+
     try {
       if (mode === "login") {
-        await login(username, password);
-      } else {
-        await register(username, password, displayName);
+        const normalizedIdentifier = identifier.trim();
+        if (!normalizedIdentifier) {
+          setError("请输入手机号或用户ID");
+          return;
+        }
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+          setError(passwordError);
+          return;
+        }
+        await login(normalizedIdentifier, password, redirectTo);
+        return;
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("auth.error"));
-    }
-    setLoading(false);
-  };
 
-  const fillAccount = (u: string) => {
-    setUsername(u);
-    setError("");
+      const phoneError = validatePhone(phone);
+      if (phoneError) {
+        setError(phoneError);
+        return;
+      }
+
+      const userIdError = validateUserId(userId);
+      if (userIdError) {
+        setError(userIdError);
+        return;
+      }
+
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        setError(passwordError);
+        return;
+      }
+
+      if (!confirmPassword) {
+        setError("确认密码不能为空");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError("两次输入的密码不一致");
+        return;
+      }
+
+      await register(phone.trim(), userId.trim(), password, redirectTo);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: "var(--bg-page)" }}>
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-200/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary-300/20 rounded-full blur-3xl" />
-      </div>
-
-      <div className="w-full max-w-md px-4 relative z-10">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <Shield className="w-8 h-8 text-white" />
+    <main className="min-h-screen bg-[#f4f8fb] text-slate-900">
+      <div className="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="flex flex-col justify-between px-6 py-8 sm:px-10 lg:px-14">
+          <div className="w-full max-w-xl">
+            <div className="relative h-24 w-72 sm:h-32 sm:w-96">
+              <Image src="/brand/qingshu-full-logo.png" alt="清数智算" fill priority className="object-contain object-left" />
+            </div>
+            <div className="mt-10 space-y-5">
+              <p className="text-sm font-semibold text-cyan-700">真实用户体系 · 报告追踪 · 回测复用</p>
+              <h1 className="text-4xl font-bold leading-tight tracking-normal text-slate-950 sm:text-5xl">
+                清数智算投研工作台
+              </h1>
+              <p className="max-w-lg text-base leading-7 text-slate-600">
+                面向研究与辅助分析场景，沉淀用户 API 配置、个股研究报告、下载记录和策略回测历史。
+              </p>
+            </div>
+            <div className="mt-10 grid gap-3 sm:grid-cols-3">
+              {["联合数据", "评分信号", "研究与回测"].map((item) => (
+                <div key={item} className="rounded-lg border border-cyan-100 bg-white/80 px-4 py-4 shadow-sm">
+                  <div className="text-sm font-semibold text-slate-900">{item}</div>
+                  <div className="mt-2 h-1 w-10 rounded-full bg-cyan-500" />
+                </div>
+              ))}
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-[var(--text-heading)] tracking-tight">{t("app.name")}</h1>
-          <p className="text-[var(--text-muted)] mt-2 text-sm">{t("app.description")}</p>
-        </div>
+          <p className="mt-10 text-xs text-slate-500">仅用于研究与辅助分析，不构成投资建议</p>
+        </section>
 
-        <div className="card p-8">
-          <div className="flex mb-6 bg-[var(--bg-surface)] rounded-xl p-1 border border-[var(--border-default)]">
-            <button
-              onClick={() => { setMode("login"); setError(""); }}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                mode === "login" ? "bg-white text-primary-700 shadow-sm font-semibold" : "text-[var(--text-muted)]"
-              }`}
-            >
-              {t("auth.login")}
-            </button>
-            <button
-              onClick={() => { setMode("register"); setError(""); }}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                mode === "register" ? "bg-white text-primary-700 shadow-sm font-semibold" : "text-[var(--text-muted)]"
-              }`}
-            >
-              {t("auth.register")}
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-xs text-[var(--text-secondary)] font-medium">{t("auth.username")}</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t("auth.username.placeholder")}
-                required
-                className="w-full mt-1"
-              />
+        <section className="flex items-center px-6 py-8 sm:px-10 lg:px-14">
+          <div className="w-full rounded-lg border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
+            <div className="mb-7 flex rounded-lg bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("login");
+                  setError("");
+                  setNotice("");
+                  clearAuthNotice();
+                }}
+                className={`h-11 flex-1 rounded-md text-sm font-semibold ${mode === "login" ? "bg-white text-cyan-700 shadow-sm" : "text-slate-500"}`}
+              >
+                登录
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("register");
+                  setError("");
+                  setNotice("");
+                  clearAuthNotice();
+                }}
+                className={`h-11 flex-1 rounded-md text-sm font-semibold ${mode === "register" ? "bg-white text-cyan-700 shadow-sm" : "text-slate-500"}`}
+              >
+                注册
+              </button>
             </div>
 
-            {mode === "register" && (
-              <div>
-                <label className="text-xs text-[var(--text-secondary)] font-medium">{t("auth.displayName")}</label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder={t("auth.displayName.placeholder")}
-                  className="w-full mt-1"
+            <form onSubmit={submit} className="space-y-4">
+              {mode === "login" ? (
+                <Field
+                  icon={<UserRound className="h-4 w-4" />}
+                  label="手机号或用户ID"
+                  value={identifier}
+                  onChange={setIdentifier}
+                  placeholder="输入手机号或用户ID"
                 />
-              </div>
-            )}
-
-            <div>
-              <label className="text-xs text-[var(--text-secondary)] font-medium">{t("auth.password")}</label>
-              <div className="relative mt-1">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t("auth.password.placeholder")}
-                  required
-                  className="w-full pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-xl text-sm flex items-center gap-2 card-danger">
-                <span className="font-bold">!</span>
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary py-3"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  {t("auth.processing")}
-                </span>
               ) : (
-                mode === "login" ? t("auth.login") : t("auth.register")
+                <>
+                  <Field
+                    icon={<Phone className="h-4 w-4" />}
+                    label="手机号"
+                    value={phone}
+                    onChange={setPhone}
+                    placeholder="输入 11 位手机号"
+                  />
+                  <Field
+                    icon={<UserRound className="h-4 w-4" />}
+                    label="用户ID"
+                    value={userId}
+                    onChange={setUserId}
+                    placeholder="支持中文、英文、数字、_、-"
+                  />
+                </>
               )}
-            </button>
-          </form>
 
-          {process.env.NODE_ENV === "development" && (
-            <div className="mt-6 pt-5 border-t border-[var(--border-default)]">
-              <p className="text-xs text-[var(--text-muted)] text-center mb-2">{t("auth.quickLogin")}</p>
-              <p className="text-[11px] text-[var(--color-warning)] text-center mb-3">仅开发环境显示用户名快捷填充</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { u: "admin", r: t("auth.admin"), color: "text-primary-700 bg-primary-50" },
-                  { u: "demo", r: t("auth.demo"), color: "text-blue-700 bg-blue-50" },
-                  { u: "analyst", r: t("auth.analyst"), color: "text-emerald-700 bg-emerald-50" },
-                  { u: "guest", r: t("auth.guest"), color: "text-gray-600 bg-gray-100" },
-                ].map((acc) => (
-                  <button
-                    key={acc.u}
-                    type="button"
-                    onClick={() => fillAccount(acc.u)}
-                    className="p-2.5 rounded-xl transition-all text-left border border-[var(--border-default)] hover:bg-[var(--bg-surface)] hover:border-primary-300"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${acc.color}`}>{acc.r}</span>
-                    </div>
-                    <p className="text-xs font-medium text-[var(--text-primary)] mt-1">{acc.u}</p>
-                    <p className="text-[10px] text-[var(--text-muted)]">点击填充账号名</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+              <PasswordField
+                label="密码"
+                value={password}
+                onChange={setPassword}
+                show={showPassword}
+                onToggle={() => setShowPassword((value) => !value)}
+              />
 
-        <p className="text-center text-xs text-[var(--text-muted)] mt-6">
-          {t("app.disclaimer")}
-        </p>
+              {mode === "register" ? (
+                <PasswordField
+                  label="确认密码"
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  show={showPassword}
+                  onToggle={() => setShowPassword((value) => !value)}
+                />
+              ) : null}
+
+              {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+              {!error && notice ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{notice}</div>
+              ) : null}
+
+              <button
+                disabled={loading}
+                className="h-12 w-full rounded-lg bg-cyan-700 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-800 disabled:opacity-60"
+              >
+                {loading ? "处理中..." : mode === "login" ? "登录工作台" : "创建账户"}
+              </button>
+            </form>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
+  );
+}
+
+function Field({
+  icon,
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-600">{label}</span>
+      <span className="mt-1 flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-cyan-500">
+        <span className="text-slate-400">{icon}</span>
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          required
+          className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm outline-none"
+        />
+      </span>
+    </label>
+  );
+}
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  show,
+  onToggle,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  show: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-600">{label}</span>
+      <span className="mt-1 flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-cyan-500">
+        <Lock className="h-4 w-4 text-slate-400" />
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="至少 8 位，建议包含大小写和数字"
+          required
+          className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm outline-none"
+        />
+        <button type="button" onClick={onToggle} className="text-slate-400 hover:text-slate-700">
+          {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </span>
+    </label>
   );
 }

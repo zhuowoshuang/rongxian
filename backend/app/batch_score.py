@@ -14,7 +14,15 @@ from app.models.financial_metric import FinancialMetric
 from app.models.technical_indicator import TechnicalIndicator
 from app.models.stock_score import StockScore
 from app.models.trade_signal import TradeSignal
-from app.services.scoring import calculate_quality_score, calculate_valuation_score, calculate_growth_score, calculate_trend_score, calculate_risk_score, get_rating
+from app.services.scoring import (
+    _latest_financial_for_stock,
+    calculate_growth_score,
+    calculate_quality_score,
+    calculate_risk_score,
+    calculate_trend_score,
+    calculate_valuation_score,
+    get_rating,
+)
 from app.services.signal import determine_signal_type, calculate_position, calculate_prices
 from app.core.constants import SignalStatus
 from sqlalchemy import func
@@ -64,12 +72,7 @@ def batch_score():
                 continue
 
             # 获取最新财务数据
-            financial = (
-                db.query(FinancialMetric)
-                .filter(FinancialMetric.stock_id == stock.id)
-                .order_by(FinancialMetric.report_period.desc())
-                .first()
-            )
+            financial = _latest_financial_for_stock(db, stock.id)
 
             # 获取最新技术指标
             tech = (

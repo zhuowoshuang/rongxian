@@ -1,5 +1,5 @@
 """
-PDF 生成服务 — 清算量化分析系统
+PDF 生成服务 — 清数智算量化分析系统
 使用 xhtml2pdf 将 Markdown 报告转换为专业排版的 PDF
 特性：中文字体、数据清洗、研究评级映射、页眉页脚、免责声明
 """
@@ -269,7 +269,7 @@ def _build_pdf_html(md_content: str, title: str, report_date: str = "", stock_sy
         color: #94a3b8;
     }}
     @bottom-right {{
-        content: "清算 · 研究辅助系统";
+        content: "清数智算 · 研究辅助系统";
         font-size: 9px;
         color: #94a3b8;
     }}
@@ -461,12 +461,12 @@ strong {{
 
 <!-- 封面 -->
 <div class="cover">
-    <div class="brand">清算</div>
+    <div class="brand">清数智算</div>
     <div class="brand-sub">智能投研工作台 · 研究辅助系统</div>
     <h1>{html.escape(title)}</h1>
     {cover_info}
     <div class="disclaimer">
-        本报告由清算量化分析系统自动生成，基于公开市场数据和多维评分模型，仅供研究参考，不构成任何投资建议。
+        本报告由清数智算量化分析系统自动生成，基于公开市场数据和多维评分模型，仅供研究参考，不构成任何投资建议。
         投资有风险，入市需谨慎。报告中的研究评级、模型观察价、风险警戒价均为历史研究测算，不代表未来收益，不包含实盘交易建议。
     </div>
 </div>

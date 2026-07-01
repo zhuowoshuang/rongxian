@@ -12,6 +12,7 @@ from typing import Optional
 from urllib.parse import urlencode
 from app.data_providers.base import DataProviderBase
 from app.data_providers.http_client import get_json, get_text
+from app.services.provider_symbols import normalize_stock_symbol_for_provider
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +134,7 @@ class EastMoneyProvider(DataProviderBase):
             return self._fetch_a_daily(symbol, start_date, end_date)
 
     def _tencent_code(self, symbol: str) -> str:
-        if len(symbol) == 5 and symbol.isdigit():
-            return f"hk{symbol}"
-        elif symbol.startswith(("6", "5")):
-            return f"sh{symbol}"
-        else:
-            return f"sz{symbol}"
+        return normalize_stock_symbol_for_provider(symbol, "tencent")
 
     def _fetch_a_daily(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
         # 优先用腾讯 API，失败则用 baostock
@@ -165,7 +161,7 @@ class EastMoneyProvider(DataProviderBase):
             if lg.error_code != '0':
                 return pd.DataFrame()
             try:
-                bs_code = f"sh.{symbol}" if symbol.startswith(("6", "5", "9")) else f"sz.{symbol}"
+                bs_code = normalize_stock_symbol_for_provider(symbol, "baostock")
                 rs = bs.query_history_k_data_plus(
                     bs_code,
                     fields="date,open,high,low,close,volume,amount",
@@ -308,7 +304,7 @@ class EastMoneyProvider(DataProviderBase):
         return self._fetch_a_financial(symbol)
 
     def _fetch_a_financial(self, symbol: str) -> pd.DataFrame:
-        code = f"SH{symbol}" if symbol.startswith(("6", "5")) else f"SZ{symbol}"
+        code = normalize_stock_symbol_for_provider(symbol, "xueqiu")
         url = f"https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjaxNew?type=0&code={code}"
         try:
             data = _curl_get(url)
@@ -324,7 +320,7 @@ class EastMoneyProvider(DataProviderBase):
                 "revenue_yoy": self._safe_float(r.get("TOTALOPERATEREVETZ")),
                 "net_profit": self._safe_div(r.get("PARENTNETPROFIT"), 1e8),
                 "net_profit_yoy": self._safe_float(r.get("PARENTNETPROFITTZ")),
-                "gross_margin": self._safe_float(r.get("XSMGLL")),
+                "gross_margin": self._safe_float(r.get("XSMLL")),
                 "net_margin": self._safe_float(r.get("XSJLL")),
                 "roe": self._safe_float(r.get("ROEJQ")),
                 "roa": self._safe_float(r.get("ROA")),
@@ -368,7 +364,7 @@ class EastMoneyProvider(DataProviderBase):
         tc_codes = ",".join(c[0] for c in codes)
         url = f"https://qt.gtimg.cn/q={tc_codes}"
         try:
-            text = _curl_get_text(url)
+            text = _curl_get_text(url, timeout=3)
         except Exception:
             return [{"name": c[1], "code": c[2], "current": 0, "change": 0, "change_pct": 0} for c in codes]
 
@@ -406,10 +402,7 @@ class EastMoneyProvider(DataProviderBase):
 
     def _fetch_a_valuation(self, symbol: str) -> dict:
         """A股估值数据"""
-        if symbol.startswith(("6", "5")):
-            secid = f"1.{symbol}"
-        else:
-            secid = f"0.{symbol}"
+        secid = normalize_stock_symbol_for_provider(symbol, "eastmoney")
         url = (
             f"https://push2.eastmoney.com/api/qt/stock/get?"
             f"secid={secid}&fields=f57,f58,f43,f162,f167,f116,f117,f173"

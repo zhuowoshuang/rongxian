@@ -33,14 +33,16 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/stock_agent
       REDIS_URL: redis://redis:6379/0
-      MOCK_DATA: "true"
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-please-change-this-in-production}
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-false}
+      MOCK_DATA: ${MOCK_DATA:-false}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       PYTHONUNBUFFERED: "1"
     depends_on:
       db:
         condition: service_healthy
     command: >
-      sh -c "python -m app.seed --force && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   # Next.js 前端
   frontend:

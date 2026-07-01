@@ -1,0 +1,77 @@
+{
+  "packageName": "qs-adata-migration-package",
+  "version": "1.2.0",
+  "generatedAt": "2026-06-30",
+  "sourceProject": "AData (https://github.com/1nchaos/adata)",
+  "targetProject": "清数智算",
+  "statusRulesVersion": "1.1.0",
+  "includedFiles": [
+    "README.md",
+    "package_manifest.json",
+    "COPY_MAP.md",
+    "INSTALLATION_MODES.md",
+    "MIGRATION_READY_REPORT.md",
+    "BLOCKING_ISSUES.md",
+    "python/pyproject.toml",
+    "python/qs_adapter/",
+    "python/qs_backend_bridge/",
+    "python/requirements-adata.txt",
+    "frontend_contract/",
+    "target_templates/fastapi/",
+    "target_templates/frontend/",
+    "openapi/qs_adata_api.openapi.json",
+    "acceptance/run_all.py",
+    "acceptance/validate_manifest.py",
+    "acceptance/validate_contract.py",
+    "acceptance/validate_importability.py",
+    "acceptance/validate_status_semantics.py",
+    "acceptance/validate_fastapi_template.py",
+    "acceptance/validate_no_fake_data.py",
+    "acceptance/fixtures/",
+    "contract_tests/",
+    "examples/",
+    "docs/"
+  ],
+  "requiredPythonPackages": [
+    "requests>=2.16.0",
+    "pandas>=0.22.0",
+    "beautifulsoup4>=4.0.2",
+    "setuptools>=68.0"
+  ],
+  "supportedFunctions": [
+    "search_stocks(keyword) -> List[StockSearchItem]",
+    "get_stock_quote(symbol) -> StockQuote",
+    "get_stock_kline(symbol, period) -> StockKline",
+    "get_stock_financials(symbol) -> List[FinancialMetric]",
+    "get_stock_data_bundle(symbol, period) -> StockDataBundle"
+  ],
+  "verifiedCases": ["300866", "999999", "abc"],
+  "migrationReadiness": {
+    "backendReady": true,
+    "frontendReady": true,
+    "contractFrozen": true,
+    "acceptancePassed": true,
+    "blockingIssues": []
+  },
+  "acceptanceCommands": [
+    "python qs_migration_package/acceptance/run_all.py",
+    "python qs_migration_package/contract_tests/validate_examples.py",
+    "python qs_migration_package/python/qs_backend_bridge/smoke_test.py --symbol 300866",
+    "python qs_migration_package/python/qs_backend_bridge/smoke_test.py --symbol 999999",
+    "python qs_migration_package/python/qs_backend_bridge/smoke_test.py --symbol abc"
+  ],
+  "testCommands": [
+    "python qs_migration_package/acceptance/run_all.py",
+    "python qs_migration_package/contract_tests/validate_examples.py",
+    "python qs_migration_package/python/qs_backend_bridge/smoke_test.py --symbol 300866",
+    "python qs_migration_package/python/qs_backend_bridge/smoke_test.py --symbol 999999",
+    "python qs_migration_package/python/qs_backend_bridge/smoke_test.py --symbol abc"
+  ],
+  "knownLimitations": [
+    "东方财富 API 可能被企业代理拦截",
+    "行业字段暂缺（AData 有接口但本轮未封装）",
+    "板块数据本轮未接入",
+    "财务仅核心指标（东方财富 F10），非完整三大报表",
+    "无 WebSocket 实时推送"
+  ]
+}

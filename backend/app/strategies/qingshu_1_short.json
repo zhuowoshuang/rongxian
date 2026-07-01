@@ -1,0 +1,8 @@
+{
+  "name": "清数1号·短期",
+  "horizon": "短期",
+  "description": "短线趋势观察策略，侧重价格动量、短期波动和信号触发节奏，适合观察 5-20 个交易日内的变化。",
+  "signal_rules": ["价格动量改善", "短期波动可控", "信号触发节奏清晰"],
+  "risk_rules": ["避免异常放量回撤", "过滤样本不足股票"],
+  "default_params": { "lookback_days": 20, "rebalance": "weekly" }
+}

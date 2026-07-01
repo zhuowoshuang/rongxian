@@ -16,8 +16,40 @@ from app.models.trade_signal import TradeSignal
 from app.services.compliance import sanitize_research_text, signal_display_label
 
 
+def _data_confidence(score: StockScore) -> float:
+    """返回评分数据可信度 (0.0~1.0)，基于评分是否看起来像真实计算值。
+
+    评分=0且max>0 表示该维度数据缺失（被评分引擎标记为无数据）。
+    评分>0 表示至少有部分字段可用。
+    """
+    dims = [
+        (score.quality_score or 0, 30),
+        (score.valuation_score or 0, 20),
+        (score.growth_score or 0, 20),
+        (score.trend_score or 0, 20),
+        (score.risk_score or 0, 10),
+    ]
+    # available: dimension contributed something (>0) OR explicitly 0 with data
+    # For quality: 0 is suspicious (all data missing), need at least 3 to count
+    # For valuation: 0 is very common when PE/PB missing
+    available = 0
+    for val, weight in dims:
+        if val >= 3:
+            available += weight
+        elif val > 0:
+            available += weight * 0.5  # partial credit for very low score (may be genuine or missing)
+    total = sum(w for _, w in dims)
+    return min(1.0, available / total) if total > 0 else 0.0
+
+
 def determine_signal_type(score: StockScore) -> tuple[str, int, str]:
-    """Determine research-oriented signal label and narrative."""
+    """Determine research-oriented signal label and narrative.
+
+    缺失字段不直接等同于负面判断：当评分偏低但数据覆盖不足时，
+    标记为 data_quality_limited（数据质量受限），而非 SELL/REDUCE。
+    """
+    confidence = _data_confidence(score)
+
     if (
         score.total_score >= 85
         and score.quality_score >= 24
@@ -42,6 +74,16 @@ def determine_signal_type(score: StockScore) -> tuple[str, int, str]:
             reasons.append("估值吸引力有限")
         logic = "；".join(reasons) if reasons else "综合评分处于中性区间"
         return SignalType.WATCH, strength, f"{logic}，当前维持观察"
+
+    # ── 数据质量 gate：评分偏低但数据覆盖不足 → 不判 SELL/REDUCE ──
+    if confidence < 0.50:
+        return "DATA_INSUFFICIENT", 0, (
+            f"数据覆盖不足（可信度{confidence:.0%}），估值、毛利率或市值等关键字段缺失，暂不形成正式信号"
+        )
+    if confidence < 0.70:
+        return "DATA_INSUFFICIENT", 0, (
+            f"数据部分缺失（可信度{confidence:.0%}），当前评估参考价值有限，暂不形成正式信号"
+        )
 
     if score.total_score >= 50:
         reasons = []
@@ -109,7 +151,7 @@ def calculate_prices(
     return entry, target, stop_loss
 
 
-def generate_signal_for_stock(db: Session, stock_id: int, signal_date: date) -> Optional[TradeSignal]:
+def generate_signal_for_stock(db: Session, stock_id: int, signal_date: date, *, commit: bool = True) -> Optional[TradeSignal]:
     score = (
         db.query(StockScore)
         .filter(StockScore.stock_id == stock_id, StockScore.score_date == signal_date)
@@ -158,12 +200,17 @@ def generate_signal_for_stock(db: Session, stock_id: int, signal_date: date) -> 
     position = calculate_position(signal_type, strength, existing_sector_pct, total_position_pct)
     entry, target, stop_loss = calculate_prices(price, signal_type, tech)
 
+    if signal_type == "DATA_INSUFFICIENT":
+        position = 0
+        entry, target, stop_loss = None, None, None
+
     holding_map = {
         SignalType.BUY: "3-6个月",
         SignalType.ADD: "2-4个月",
         SignalType.WATCH: "-",
         SignalType.REDUCE: "逐步降低关注",
         SignalType.SELL: "尽快复核",
+        "DATA_INSUFFICIENT": "-",
     }
 
     risk_items = []
@@ -220,8 +267,11 @@ def generate_signal_for_stock(db: Session, stock_id: int, signal_date: date) -> 
         )
         db.add(signal)
 
-    db.commit()
-    db.refresh(signal)
+    if commit:
+        db.commit()
+        db.refresh(signal)
+    else:
+        db.flush()
     return signal
 
 

@@ -1,0 +1,8 @@
+{
+  "name": "清数3号·中长期",
+  "horizon": "中长期",
+  "description": "质量成长观察策略，侧重 ROE、盈利成长、现金流质量和趋势稳定性，适合观察 3-12 个月的基本面改善。",
+  "signal_rules": ["ROE 稳定", "盈利成长改善", "现金流质量较好"],
+  "risk_rules": ["过滤高杠杆异常", "过滤盈利大幅波动"],
+  "default_params": { "lookback_days": 180, "rebalance": "monthly" }
+}

@@ -1,0 +1,18 @@
+{
+  "_fixture": true,
+  "_description": "abc 非法股票代码离线 fixture",
+  "symbol": "abc",
+  "dataStatus": "ERROR",
+  "missingFields": ["symbol"],
+  "errorMessage": "非法股票代码: abc（必须为6位数字）",
+  "sourceSummary": {
+    "quoteSource": "none",
+    "klineSource": "none",
+    "financialsSource": "none",
+    "searchSource": "none"
+  },
+  "quote": null,
+  "kline": null,
+  "financials": [],
+  "searchItem": null
+}

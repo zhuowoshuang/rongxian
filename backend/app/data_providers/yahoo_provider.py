@@ -24,6 +24,7 @@ for _var, _val in _saved_proxy.items():
         os.environ[_var] = _val
 
 from app.data_providers.base import DataProviderBase
+from app.services.provider_symbols import normalize_stock_symbol_for_provider
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,10 @@ def _to_yahoo_symbol(symbol: str) -> str:
     return f"{symbol}.SZ"
 
 
+def _normalized_yahoo_symbol(symbol: str) -> str:
+    return normalize_stock_symbol_for_provider(symbol, "yahoo")
+
+
 class YahooFinanceProvider(DataProviderBase):
     """Yahoo Finance 数据源 - 支持 A 股和港股"""
 
@@ -49,7 +54,7 @@ class YahooFinanceProvider(DataProviderBase):
     def fetch_daily_prices(
         self, symbol: str, start_date: date, end_date: date
     ) -> pd.DataFrame:
-        yahoo_sym = _to_yahoo_symbol(symbol)
+        yahoo_sym = _normalized_yahoo_symbol(symbol)
         try:
             df = yf.download(
                 yahoo_sym,
@@ -99,7 +104,7 @@ class YahooFinanceProvider(DataProviderBase):
         return pd.DataFrame([r for r in rows if r["close"] is not None])
 
     def fetch_financial_metrics(self, symbol: str) -> pd.DataFrame:
-        yahoo_sym = _to_yahoo_symbol(symbol)
+        yahoo_sym = _normalized_yahoo_symbol(symbol)
         try:
             ticker = yf.Ticker(yahoo_sym)
             financials = ticker.financials
@@ -190,7 +195,7 @@ class YahooFinanceProvider(DataProviderBase):
 
     def fetch_valuation(self, symbol: str) -> dict:
         """获取估值数据 - 从已有的行情和财务数据计算 PE/PB"""
-        yahoo_sym = _to_yahoo_symbol(symbol)
+        yahoo_sym = _normalized_yahoo_symbol(symbol)
         try:
             # 获取最新价格
             df = yf.download(yahoo_sym, period="5d", progress=False)
@@ -238,7 +243,7 @@ class YahooFinanceProvider(DataProviderBase):
             return {}
 
     def fetch_news(self, symbol: str, limit: int = 10) -> list:
-        yahoo_sym = _to_yahoo_symbol(symbol)
+        yahoo_sym = _normalized_yahoo_symbol(symbol)
         try:
             ticker = yf.Ticker(yahoo_sym)
             news = ticker.news or []

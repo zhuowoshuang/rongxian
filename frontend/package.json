@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "clean": "node scripts/clean-next.mjs",
     "dev": "next dev -p 4101",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 4101",
     "lint": "next lint"
   },
   "dependencies": {

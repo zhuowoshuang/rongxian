@@ -16,6 +16,7 @@ class StockScore(Base):
     trend_score = Column(Float, comment="趋势分 0-20")
     risk_score = Column(Float, comment="风险分 0-10")
     rating = Column(String(20), comment="评级: BUY/ADD/WATCH/REDUCE/SELL")
+    score_source = Column(String(32), default="unknown_legacy", nullable=True, comment="评分来源: real_calculated / quick_seed_demo / unknown_legacy")
     reason_summary = Column(String(500), comment="评分理由摘要")
     created_at = Column(DateTime, server_default=func.now())
 

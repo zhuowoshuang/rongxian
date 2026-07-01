@@ -1,14 +1,30 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
 
 
 class BacktestRequest(BaseModel):
-    strategy: str = "fundamental_medium_long"
+    strategy: str = "qingshu_1_short"
+    strategy_id: str | None = None
+    stock_symbol: str | None = None
+    stock_code: str | None = None
+    stock_name: str | None = None
     market: str = "A_SHARE"
     start_date: str = "2020-01-01"
     end_date: str = "2025-12-31"
-    rebalance: str = "monthly"  # monthly / quarterly
+    rebalance: str = "monthly"
+    rebalance_frequency: str | None = None
     initial_capital: float = 1000000.0
+
+    @property
+    def resolved_strategy_id(self) -> str:
+        return self.strategy_id or self.strategy
+
+    @property
+    def resolved_stock_code(self) -> str | None:
+        return self.stock_code or self.stock_symbol
+
+    @property
+    def resolved_rebalance_frequency(self) -> str:
+        return self.rebalance_frequency or self.rebalance
 
 
 class BacktestResult(BaseModel):
@@ -27,7 +43,7 @@ class BacktestResult(BaseModel):
 
 class HoldingItem(BaseModel):
     symbol: str
-    buy_date: str  # YYYY-MM-DD
+    buy_date: str
     shares: int
 
 

@@ -1,0 +1,18 @@
+{
+  "_fixture": true,
+  "_description": "999999 不存在股票代码离线 fixture",
+  "symbol": "999999",
+  "dataStatus": "EMPTY",
+  "missingFields": ["quote", "kline", "financials", "searchItem"],
+  "errorMessage": "未找到股票 999999 的有效数据",
+  "sourceSummary": {
+    "quoteSource": "none",
+    "klineSource": "none",
+    "financialsSource": "none",
+    "searchSource": "none"
+  },
+  "quote": null,
+  "kline": null,
+  "financials": [],
+  "searchItem": null
+}

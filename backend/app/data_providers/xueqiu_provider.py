@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Optional
 from app.data_providers.base import DataProviderBase
 from app.data_providers.http_client import get_json
+from app.services.provider_symbols import normalize_stock_symbol_for_provider
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,10 @@ def _to_xueqiu_symbol(symbol: str) -> str:
     if symbol.startswith(("6", "5")):
         return f"SH{symbol}"
     return f"SZ{symbol}"
+
+
+def _normalized_xueqiu_symbol(symbol: str) -> str:
+    return normalize_stock_symbol_for_provider(symbol, "xueqiu")
 
 
 class XueqiuProvider(DataProviderBase):
@@ -108,7 +113,7 @@ class XueqiuProvider(DataProviderBase):
         else:
             ed = end_date
 
-        xq_symbol = _to_xueqiu_symbol(symbol)
+        xq_symbol = _normalized_xueqiu_symbol(symbol)
         begin_ts = int(datetime(sd.year, sd.month, sd.day).timestamp() * 1000)
         url = (
             f"https://stock.xueqiu.com/v5/stock/chart/kline.json"
@@ -139,7 +144,7 @@ class XueqiuProvider(DataProviderBase):
     def fetch_financial_metrics(self, symbol: str) -> pd.DataFrame:
         """获取财务数据"""
         self._ensure_token()
-        xq_symbol = _to_xueqiu_symbol(symbol)
+        xq_symbol = _normalized_xueqiu_symbol(symbol)
         url = (
             f"https://stock.xueqiu.com/v5/finance/income/stock.json"
             f"?symbol={xq_symbol}&type=all&is_detail=true&count=8"
@@ -188,7 +193,7 @@ class XueqiuProvider(DataProviderBase):
     def fetch_news(self, symbol: str, limit: int = 10) -> list:
         """获取新闻"""
         self._ensure_token()
-        xq_symbol = _to_xueqiu_symbol(symbol)
+        xq_symbol = _normalized_xueqiu_symbol(symbol)
         url = f"https://xueqiu.com/query/v1/symbol/search/status.json?symbol={xq_symbol}&count={limit}"
         data = _xq_request(url, self._token)
         items = data.get("list", [])
@@ -197,7 +202,7 @@ class XueqiuProvider(DataProviderBase):
     def fetch_valuation(self, symbol: str) -> dict:
         """获取估值数据"""
         self._ensure_token()
-        xq_symbol = _to_xueqiu_symbol(symbol)
+        xq_symbol = _normalized_xueqiu_symbol(symbol)
         url = f"https://stock.xueqiu.com/v5/stock/quote.json?symbol={xq_symbol}&extend=detail"
         data = _xq_request(url, self._token)
         quote = data.get("data", {}).get("quote", {})

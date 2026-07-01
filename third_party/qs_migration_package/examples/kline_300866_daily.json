@@ -1,0 +1,12 @@
+{
+  "symbol": "300866",
+  "period": "daily",
+  "items": [],
+  "source": "adata",
+  "updateTime": null,
+  "dataStatus": "EMPTY",
+  "missingFields": [
+    "klineData"
+  ],
+  "errorMessage": "get_market 返回空 DataFrame"
+}

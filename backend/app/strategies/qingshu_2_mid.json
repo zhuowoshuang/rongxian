@@ -1,0 +1,8 @@
+{
+  "name": "清数2号·中期",
+  "horizon": "中期",
+  "description": "估值修复观察策略，侧重估值分位、基本面改善和中期趋势确认，适合观察 1-3 个月的修复机会。",
+  "signal_rules": ["估值分位具备修复空间", "基本面指标边际改善", "中期趋势确认"],
+  "risk_rules": ["过滤财务质量恶化", "避免趋势失效样本"],
+  "default_params": { "lookback_days": 60, "rebalance": "monthly" }
+}

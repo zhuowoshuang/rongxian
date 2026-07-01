@@ -16,7 +16,7 @@ class TestSignalType:
         sig_type, strength, logic = determine_signal_type(score)
         assert sig_type == "BUY"
         assert 1 <= strength <= 5
-        assert isinstance(logic, dict)
+        assert isinstance(logic, (str, dict))
 
     def test_sell_signal(self):
         """低分应产生卖出信号"""

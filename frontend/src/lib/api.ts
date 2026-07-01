@@ -34,21 +34,94 @@ import type {
   RuntimeInfo,
   BacktestMeta,
   OperationLogItem,
+  AvailableBacktestStockResponse,
+  ScoreDiagnosticsResponse,
 } from "@/types";
+import { safeGetItem, safeRemoveItem, safeSetItem } from "@/lib/safeStorage";
 
 const API_BASE = "/api";
-const DIRECT_API_BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:4210"}/api`;
+const DIRECT_API_BASE =   `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"}/api`;
+export const AUTH_NOTICE_KEY = "auth-notice";
+
+export type ApiErrorCode = "AUTH_EXPIRED" | "FORBIDDEN" | "NETWORK" | "TIMEOUT" | "HTTP_ERROR";
+
+export class ApiRequestError extends Error {
+  status?: number;
+  code: ApiErrorCode;
+
+  constructor(message: string, options: { status?: number; code: ApiErrorCode }) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = options.status;
+    this.code = options.code;
+  }
+}
+
+export function setAuthNotice(notice: "expired" | "logged_out" | "unauthorized") {
+  if (typeof window === "undefined") return;
+  safeSetItem(window.sessionStorage, AUTH_NOTICE_KEY, notice);
+}
+
+export function getAuthNotice() {
+  if (typeof window === "undefined") return null;
+  return safeGetItem(window.sessionStorage, AUTH_NOTICE_KEY);
+}
+
+export function clearAuthNotice() {
+  if (typeof window === "undefined") return;
+  safeRemoveItem(window.sessionStorage, AUTH_NOTICE_KEY);
+}
+
+export function clearClientSession(notice: "expired" | "logged_out" | "unauthorized" = "expired") {
+  if (typeof window === "undefined") return;
+  safeRemoveItem(window.localStorage, "token");
+  safeRemoveItem(window.localStorage, "user");
+  safeRemoveItem(window.sessionStorage, "token");
+  safeRemoveItem(window.sessionStorage, "user");
+  setAuthNotice(notice);
+  window.dispatchEvent(new Event("auth:logout"));
+}
+
+export function isApiRequestError(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError;
+}
+
+export function isAuthExpiredError(error: unknown) {
+  return isApiRequestError(error) && error.code === "AUTH_EXPIRED";
+}
+
+export function isForbiddenError(error: unknown) {
+  return isApiRequestError(error) && error.code === "FORBIDDEN";
+}
+
+export function isNetworkError(error: unknown) {
+  return isApiRequestError(error) && error.code === "NETWORK";
+}
+
+export function isTimeoutError(error: unknown) {
+  return isApiRequestError(error) && error.code === "TIMEOUT";
+}
 
 function mapApiError(status: number, statusText: string, detail: string): string {
   if (detail) return detail;
   if (status === 400) return "请求参数无效，请检查后重试。";
-  if (status === 401) return "登录状态已失效，请重新登录。";
-  if (status === 403) return "当前账号无权访问该内容。";
+  if (status === 401) return "登录已过期，请重新登录后查看真实数据。";
+  if (status === 403) return "当前账号无权访问此页面。";
   if (status === 404) return "请求的内容不存在或尚未接通。";
   if (status === 408) return "请求超时，请稍后重试。";
   if (status === 429) return "请求过于频繁，请稍后再试。";
-  if (status >= 500) return "后端服务暂时不可用，请稍后重新加载。";
+  if (status >= 500) return "后端服务暂不可用，请确认本地后端已启动。";
   return `接口请求失败（${status} ${statusText}）`;
+}
+
+function normalizeErrorDetail(body: any): string {
+  const detail = body?.detail ?? body?.message ?? "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || item?.message || JSON.stringify(item)).join("；");
+  }
+  if (detail && typeof detail === "object") return detail.msg || detail.message || JSON.stringify(detail);
+  return "";
 }
 
 type FetchApiOptions = RequestInit & {
@@ -63,14 +136,14 @@ function buildApiUrl(path: string, useDirectBase?: boolean): string {
 }
 
 async function fetchAPI<T>(path: string, options?: FetchApiOptions): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token = typeof window !== "undefined" ? safeGetItem(window.localStorage, "token") : null;
   const { timeoutMs, timeoutErrorMessage, useDirectBase, ...fetchOptions } = options || {};
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(fetchOptions.headers as Record<string, string> || {}),
+    ...((fetchOptions.headers as Record<string, string>) || {}),
   };
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs || 15000);
@@ -81,39 +154,86 @@ async function fetchAPI<T>(path: string, options?: FetchApiOptions): Promise<T> 
       signal: controller.signal,
     });
     if (!res.ok) {
-      if (res.status === 401 && typeof window !== "undefined") {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        // 通知 auth context 清除状态
-        window.dispatchEvent(new Event("auth:logout"));
-        window.location.href = "/";
-      }
-      // 尝试解析后端返回的错误详情
       let detail = "";
-      try { const body = await res.json(); detail = body.detail || ""; } catch {}
-      throw new Error(mapApiError(res.status, res.statusText, detail));
+      try {
+        const body = await res.json();
+        detail = normalizeErrorDetail(body);
+      } catch {
+        detail = "";
+      }
+      const message = mapApiError(res.status, res.statusText, detail);
+      if (res.status === 401) {
+        clearClientSession("expired");
+        throw new ApiRequestError(message, { status: 401, code: "AUTH_EXPIRED" });
+      }
+      if (res.status === 403) {
+        throw new ApiRequestError(message, { status: 403, code: "FORBIDDEN" });
+      }
+      throw new ApiRequestError(message, { status: res.status, code: "HTTP_ERROR" });
     }
     return res.json();
-  } catch (e: any) {
-    if (e.name === "AbortError") throw new Error(timeoutErrorMessage || "请求超时，请稍后再试。");
-    throw e;
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new ApiRequestError(timeoutErrorMessage || "请求超时，请检查后端服务状态。", {
+        code: "TIMEOUT",
+      });
+    }
+    if (error instanceof ApiRequestError) throw error;
+    if (error instanceof TypeError) {
+      throw new ApiRequestError("后端服务暂不可用，请确认本地后端已启动。", {
+        code: "NETWORK",
+      });
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-// ==================== 仪表盘 ====================
+async function readDownloadError(res: Response, fallback: string): Promise<string> {
+  const contentType = res.headers.get("content-type") || "";
+  try {
+    if (contentType.includes("application/json")) {
+      const body = await res.json();
+      const detail = normalizeErrorDetail(body);
+      return detail || fallback;
+    }
+    const text = await res.text();
+    return text || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-export const getDashboard = (date?: string) =>
-  fetchAPI<DashboardData>(`/dashboard${date ? `?date=${encodeURIComponent(date)}` : ""}`, { timeoutMs: 60000 });
+export const getDashboard = (date?: string, includeDemo?: boolean, refresh?: boolean) => {
+  const searchParams = new URLSearchParams();
+  if (date) searchParams.set("date", date);
+  if (includeDemo) searchParams.set("include_demo", "true");
+  if (refresh) searchParams.set("refresh", "true");
+  const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
+  return fetchAPI<DashboardData>(`/dashboard${suffix}`, { timeoutMs: 60000 });
+};
 
-export const getDashboardAvailableDates = () =>
-  fetchAPI<DashboardAvailableDates>("/dashboard/available-dates");
+export const getDashboardAvailableDates = (includeDemo?: boolean) =>
+  fetchAPI<DashboardAvailableDates>(`/dashboard/available-dates${includeDemo ? "?include_demo=true" : ""}`);
 
 // ==================== 股票 ====================
 
-export const searchStocks = (keyword: string, market?: string) =>
-  fetchAPI<StockSearchResult[]>(`/stocks/search?keyword=${encodeURIComponent(keyword)}${market ? `&market=${market}` : ""}`);
+export const searchStocks = async (keyword: string, market?: string) => {
+  const searchParams = new URLSearchParams();
+  searchParams.set("keyword", keyword);
+  if (market) searchParams.set("market", market);
+  const items = await fetchAPI<StockSearchResult[]>(`/stocks/search?${searchParams.toString()}`);
+  return items.map((item) => ({
+    ...item,
+    source: item.source || "database",
+    dataStatus: item.dataStatus || "OK",
+    networkStatus: item.networkStatus || "READY",
+    mode: item.mode || "live",
+    missingFields: item.missingFields || [],
+    errorMessage: item.errorMessage || null,
+  }));
+};
 
 export const syncStocks = (market: string = "ALL") =>
   fetchAPI<{ status: string; message: string; added: number; updated: number; total: number }>(`/stocks/sync?market=${market}`, {
@@ -126,10 +246,14 @@ export const getStockCount = () =>
 export const getStockDetail = (symbol: string) =>
   fetchAPI<StockDetail>(`/stocks/${symbol}`);
 
+export const getAvailableBacktestStocks = (market: string = "A_SHARE", limit: number = 12) =>
+  fetchAPI<AvailableBacktestStockResponse>(`/stocks/available-for-backtest?market=${encodeURIComponent(market)}&limit=${limit}`);
+
 export const getStockLibrary = (params: {
   market?: string;
   rating?: string;
   keyword?: string;
+  include_demo?: boolean;
   page?: number;
   page_size?: number;
 } = {}) => {
@@ -140,6 +264,9 @@ export const getStockLibrary = (params: {
   return fetchAPI<StockLibraryResponse>(`/stocks?${searchParams.toString()}`);
 };
 
+export const getScoreDiagnostics = (scoreDate?: string) =>
+  fetchAPI<ScoreDiagnosticsResponse>(`/stocks/diagnostics${scoreDate ? `?score_date=${encodeURIComponent(scoreDate)}` : ""}`);
+
 // ==================== 信号 ====================
 
 export const getSignals = (params: {
@@ -147,6 +274,7 @@ export const getSignals = (params: {
   signal_type?: string;
   min_score?: number;
   signal_date?: string;
+  include_demo?: boolean;
   page?: number;
   page_size?: number;
 } = {}) => {
@@ -159,8 +287,8 @@ export const getSignals = (params: {
 
 // ==================== 股票池 ====================
 
-export const getStockPool = (type: string) =>
-  fetchAPI<PoolResponse>(`/pools?type=${type}`);
+export const getStockPool = (type: string, includeDemo?: boolean) =>
+  fetchAPI<PoolResponse>(`/pools?type=${encodeURIComponent(type)}${includeDemo ? "&include_demo=true" : ""}`);
 
 // ==================== 报告 ====================
 
@@ -197,7 +325,7 @@ export const generateStyleReport = (style: string) =>
   });
 
 export const downloadReportPdf = async (reportId: number, filename: string) => {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token = typeof window !== "undefined" ? safeGetItem(window.localStorage, "token") : null;
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -206,8 +334,11 @@ export const downloadReportPdf = async (reportId: number, filename: string) => {
   try {
     const res = await fetch(`/api/reports/${reportId}/pdf`, { headers, signal: controller.signal });
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(errText || `PDF下载失败 (${res.status})`);
+      if (res.status === 401) {
+        clearClientSession("expired");
+        throw new ApiRequestError("登录已过期，请重新登录后下载 PDF 报告。", { status: 401, code: "AUTH_EXPIRED" });
+      }
+      throw new Error(await readDownloadError(res, `PDF 下载失败（HTTP ${res.status}），请稍后重试`));
     }
 
     const blob = await res.blob();
@@ -230,14 +361,43 @@ export const downloadReportPdf = async (reportId: number, filename: string) => {
   }
 };
 
+export const downloadReportPng = async (reportId: number, filename: string) => {
+  const token = typeof window !== "undefined" ? safeGetItem(window.localStorage, "token") : null;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`/api/reports/${reportId}/png`, { headers });
+  if (!res.ok) {
+    if (res.status === 401) {
+      clearClientSession("expired");
+      throw new ApiRequestError("登录已过期，请重新登录后下载 PNG 摘要图。", { status: 401, code: "AUTH_EXPIRED" });
+    }
+    throw new Error(await readDownloadError(res, "PNG 摘要图生成失败，请稍后重试"));
+  }
+  const blob = await res.blob();
+  if (blob.size < 100) throw new Error("PNG 摘要图内容为空");
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+};
+
 // ==================== 回测 ====================
 
 export const runBacktest = (params: {
   strategy?: string;
+  strategy_id?: string;
+  stock_symbol?: string;
+  stock_code?: string;
+  stock_name?: string;
   market?: string;
   start_date?: string;
   end_date?: string;
   rebalance?: string;
+  rebalance_frequency?: string;
   initial_capital?: number;
 }) =>
   fetchAPI<BacktestResult>("/backtest/run", {
@@ -301,8 +461,34 @@ export const getAdminStats = () =>
 export const getAdminSystemStatus = () =>
   fetchAPI<RuntimeInfo>("/admin/system-status");
 
+export const getAdminScoreDiagnostics = (scoreDate?: string) =>
+  fetchAPI<ScoreDiagnosticsResponse>(`/admin/score-diagnostics${scoreDate ? `?score_date=${encodeURIComponent(scoreDate)}` : ""}`);
+
 export const getAdminUsers = () =>
   fetchAPI<AdminUserItem[]>("/admin/users");
+
+export const exportAdminUsersExcel = async () => {
+  const token = typeof window !== "undefined" ? safeGetItem(window.localStorage, "token") : null;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch("/api/admin/users/export", { headers });
+  if (!res.ok) throw new Error("Excel 导出失败，请稍后重试。");
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "用户运营统计.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+};
+
+export const resetAdminUserPassword = (id: number, password: string) =>
+  fetchAPI<{ status: string; message: string }>(`/admin/users/${id}/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
 
 export const updateAdminUser = (id: number, data: { role?: string; is_active?: boolean }) =>
   fetchAPI<{ status: string; message: string }>(`/admin/users/${id}`, {
@@ -333,7 +519,7 @@ export const deleteApiConfig = (id: number) =>
   fetchAPI<{ status: string; message: string }>(`/admin/api-configs/${id}`, { method: "DELETE" });
 
 export const testApiConfig = (id: number) =>
-  fetchAPI<{ status: string; message: string }>(`/admin/api-configs/${id}/test`, { method: "POST" });
+  fetchAPI<{ status: string; message: string }>(`/admin/api-configs/${id}/check`, { method: "POST" });
 
 export const getUserQuotas = () =>
   fetchAPI<UserQuotaItem[]>("/admin/user-quotas");
@@ -357,6 +543,51 @@ export const getOperationLogs = (limit: number = 30) =>
 
 export const getOperationLogSummary = () =>
   fetchAPI<Record<string, any>>("/admin/operation-logs/summary");
+
+export const getAdminUsageRankings = () =>
+  fetchAPI<Record<string, any[]>>("/admin/usage-rankings");
+
+export const getAuditLogs = (params: { range?: string; user_keyword?: string; action?: string; status?: string; start_date?: string; end_date?: string; page?: number; page_size?: number } = {}) => {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => { if (val !== undefined && val !== null && val !== "") sp.set(key, String(val)); });
+  return fetchAPI<{ total: number; page: number; page_size: number; items: any[] }>(`/admin/audit-logs?${sp.toString()}`);
+};
+
+export const exportAuditLogsExcel = async (params: { range?: string; user_keyword?: string; action?: string; status?: string; start_date?: string; end_date?: string } = {}) => {
+  const token = typeof window !== "undefined" ? safeGetItem(window.localStorage, "token") : null;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => { if (val !== undefined && val !== null && val !== "") sp.set(key, String(val)); });
+  const res = await fetch(`/api/admin/audit-logs/export?${sp.toString()}`, { headers });
+  if (!res.ok) throw new Error("审计日志 Excel 导出失败，请稍后重试。");
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "审计日志.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+};
+
+export const getProfile = () => fetchAPI<Record<string, any>>("/profile");
+export const getMyUsage = () => fetchAPI<Record<string, any>>("/profile/usage");
+export const getMyApiConfigs = () => fetchAPI<any[]>("/profile/api-configs");
+export const createMyApiConfig = (data: Record<string, any>) => fetchAPI<any>("/profile/api-configs", { method: "POST", body: JSON.stringify(data) });
+export const updateMyApiConfig = (id: number, data: Record<string, any>) => fetchAPI<any>(`/profile/api-configs/${id}`, { method: "PUT", body: JSON.stringify(data) });
+export const deleteMyApiConfig = (id: number) => fetchAPI<{ status: string }>(`/profile/api-configs/${id}`, { method: "DELETE" });
+export const testMyApiConfig = (id: number) => fetchAPI<{ status: string; message: string }>(`/profile/api-configs/${id}/test`, { method: "POST" });
+export const getMyReports = () => fetchAPI<any[]>("/profile/reports");
+export const getMyBacktests = () => fetchAPI<any[]>("/profile/backtests");
+export const getMyWatchlist = () => fetchAPI<any[]>("/profile/watchlist");
+export const createMyWatchlistItem = (data: Record<string, any>) => fetchAPI<any>("/profile/watchlist", { method: "POST", body: JSON.stringify(data) });
+export const refreshMyWatchlistItem = (id: number) => fetchAPI<any>(`/profile/watchlist/${id}/refresh`, { method: "POST" });
+export const getMyWatchlistSnapshot = (id: number) => fetchAPI<any>(`/profile/watchlist/${id}/snapshot`);
+export const deleteMyWatchlistItem = (id: number) => fetchAPI<{ status: string; message: string }>(`/profile/watchlist/${id}`, { method: "DELETE" });
+export const getBacktestStrategies = () => fetchAPI<{ items: any[] }>("/backtest/strategies");
+export const getAdminWatchlistStats = () => fetchAPI<Record<string, any>>("/admin/watchlist-stats");
 
 // ==================== 管理-股票管理 ====================
 

@@ -19,6 +19,56 @@ from app.models.daily_price import DailyPrice
 from app.models.financial_metric import FinancialMetric
 from app.models.technical_indicator import TechnicalIndicator
 from app.models.stock_score import StockScore
+from app.services.financial_periods import normalize_report_period_to_date
+
+
+def _financial_sort_date(financial: FinancialMetric) -> date | None:
+    return financial.report_date or normalize_report_period_to_date(financial.report_period)
+
+
+def _latest_financial_for_stock(
+    db: Session,
+    stock_id: int,
+    score_date: date | None = None,
+) -> FinancialMetric | None:
+    rows = db.query(FinancialMetric).filter(FinancialMetric.stock_id == stock_id).all()
+    candidates = []
+    for row in rows:
+        report_date = _financial_sort_date(row)
+        if report_date is None:
+            continue
+        if score_date and report_date > score_date:
+            continue
+        candidates.append((report_date, row.id or 0, row))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return candidates[0][2]
+
+
+def _previous_financial_for_stock(
+    db: Session,
+    stock_id: int,
+    current: FinancialMetric | None,
+) -> FinancialMetric | None:
+    if current is None:
+        return None
+    current_date = _financial_sort_date(current)
+    if current_date is None:
+        return None
+    rows = db.query(FinancialMetric).filter(FinancialMetric.stock_id == stock_id).all()
+    candidates = []
+    for row in rows:
+        if row.id == current.id:
+            continue
+        report_date = _financial_sort_date(row)
+        if report_date is None or report_date >= current_date:
+            continue
+        candidates.append((report_date, row.id or 0, row))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return candidates[0][2]
 
 
 # ==================== 行业统计工具 ====================
@@ -69,16 +119,20 @@ def _compute_industry_stats(db: Session, stock_ids: list[int]) -> dict:
             industry_data[ind]["div"].append(p.dividend_yield)
 
     # 批量获取每只股票最新财务数据（消除 N+1）
-    latest_fin_subq = db.query(
-        FinancialMetric.stock_id,
-        func.max(FinancialMetric.report_period).label("max_period")
-    ).filter(FinancialMetric.stock_id.in_(stock_ids)).group_by(FinancialMetric.stock_id).subquery()
+    latest_financial_map: dict[int, FinancialMetric] = {}
+    for row in db.query(FinancialMetric).filter(FinancialMetric.stock_id.in_(stock_ids)).all():
+        report_date = _financial_sort_date(row)
+        if report_date is None:
+            continue
+        existing = latest_financial_map.get(row.stock_id)
+        if existing is None:
+            latest_financial_map[row.stock_id] = row
+            continue
+        existing_date = _financial_sort_date(existing)
+        if existing_date is None or report_date > existing_date:
+            latest_financial_map[row.stock_id] = row
 
-    latest_financials = db.query(FinancialMetric).join(
-        latest_fin_subq,
-        (FinancialMetric.stock_id == latest_fin_subq.c.stock_id) &
-        (FinancialMetric.report_period == latest_fin_subq.c.max_period)
-    ).all()
+    latest_financials = list(latest_financial_map.values())
 
     for f in latest_financials:
         stock = stock_map.get(f.stock_id)
@@ -195,6 +249,9 @@ def calculate_quality_score(financial: FinancialMetric, prev_financial: Optional
     score = 0
     details = []
     ind = industry_stats or {}
+
+    if financial is None:
+        return 0, [{"item": "财务数据", "value": "暂无", "score": 0, "max": 30, "status": "无财务数据"}]
 
     # ROE 水平（行业内排名）
     if financial.roe is not None:
@@ -396,8 +453,9 @@ def calculate_valuation_score(price: DailyPrice, financial: FinancialMetric, ind
         details.append({"item": "股息率", "value": "N/A", "score": 0, "max": 5, "status": "无数据"})
 
     # PS 市销率（如有营收数据，用市值/营收计算）
-    if price.market_cap and price.market_cap > 0 and financial.revenue and financial.revenue > 0:
-        ps = price.market_cap / financial.revenue
+    market_cap = getattr(price, "market_cap", None)
+    if market_cap and market_cap > 0 and financial.revenue and financial.revenue > 0:
+        ps = market_cap / financial.revenue
         if ps <= 2:
             s = 2
             status = "低估值"
@@ -539,6 +597,96 @@ def calculate_trend_score(price: DailyPrice, tech: Optional[TechnicalIndicator])
     return score, details
 
 
+def calculate_trend_score_v2(
+    price: DailyPrice,
+    tech: Optional[TechnicalIndicator],
+    price_history: Optional[list[DailyPrice]] = None,
+) -> tuple[float, list[dict]]:
+    """Parallel trend score used for C-end display verification. Full score: 20."""
+    if tech is None or price is None or price.close is None:
+        return 0.0, [{"item": "trend_score_v2", "value": "insufficient_data", "score": 0, "max": 20, "status": "missing"}]
+
+    history = [row for row in (price_history or []) if getattr(row, "close", None) is not None]
+    closes = [float(row.close) for row in history]
+    score = 0.0
+    details: list[dict] = []
+
+    # 1. short momentum / 4
+    momentum_score = 0.0
+    if len(closes) >= 11:
+        latest_close = closes[-1]
+        ret_5 = (latest_close - closes[-6]) / closes[-6] if closes[-6] else 0
+        ret_10 = (latest_close - closes[-11]) / closes[-11] if closes[-11] else 0
+        if ret_5 > 0 and ret_10 > 0:
+            momentum_score = 4
+        elif ret_5 > 0 or ret_10 > 0:
+            momentum_score = 2
+        details.append({"item": "short_momentum", "value": {"ret_5": round(ret_5, 4), "ret_10": round(ret_10, 4)}, "score": momentum_score, "max": 4, "status": "ok"})
+    else:
+        details.append({"item": "short_momentum", "value": "insufficient_history", "score": 0, "max": 4, "status": "missing"})
+    score += momentum_score
+
+    # 2. moving averages / 6
+    ma_score = 0.0
+    ma5 = getattr(tech, "ma5", None)
+    ma10 = getattr(tech, "ma10", None)
+    ma20 = getattr(tech, "ma20", None)
+    if ma5 is not None and ma10 is not None and ma20 is not None and ma5 > ma10 > ma20:
+        ma_score = 6
+    elif ma10 is not None and ma20 is not None and ma10 > ma20:
+        ma_score = 4
+    elif ma20 is not None and price.close > ma20:
+        ma_score = 2
+    details.append({"item": "ma_system", "value": {"ma5": ma5, "ma10": ma10, "ma20": ma20, "close": price.close}, "score": ma_score, "max": 6, "status": "ok"})
+    score += ma_score
+
+    # 3. mid trend / 4
+    mid_score = 0.0
+    ma60 = getattr(tech, "ma60", None)
+    ma120 = getattr(tech, "ma120", None)
+    if ma60 is not None and price.close > ma60:
+        mid_score += 2
+    if ma60 is not None and ma120 is not None and ma60 > ma120:
+        mid_score += 2
+    details.append({"item": "mid_trend", "value": {"ma60": ma60, "ma120": ma120, "close": price.close}, "score": mid_score, "max": 4, "status": "ok"})
+    score += mid_score
+
+    # 4. MACD + volume / 4
+    confirm_score = 0.0
+    macd = getattr(tech, "macd", None)
+    macd_signal = getattr(tech, "macd_signal", None)
+    macd_hist = getattr(tech, "macd_hist", None)
+    if macd is not None and macd_signal is not None and macd > macd_signal and (macd_hist is None or macd_hist > 0):
+        confirm_score += 2
+    volume_ratio = getattr(tech, "volume_ratio_5_20", None)
+    if volume_ratio is not None:
+        if 1.1 <= volume_ratio <= 2.0:
+            confirm_score += 2
+        elif volume_ratio > 2.0:
+            confirm_score += 1
+    details.append({"item": "macd_volume", "value": {"macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist, "volume_ratio_5_20": volume_ratio}, "score": confirm_score, "max": 4, "status": "ok"})
+    score += confirm_score
+
+    # 5. stability / 2
+    stability_score = 0.0
+    if len(closes) >= 20:
+        recent = closes[-20:]
+        peak = recent[0]
+        max_drawdown = 0.0
+        for close in recent:
+            peak = max(peak, close)
+            if peak > 0:
+                max_drawdown = max(max_drawdown, (peak - close) / peak)
+        if max_drawdown < 0.12:
+            stability_score = 2
+        details.append({"item": "stability", "value": {"max_drawdown_20": round(max_drawdown, 4)}, "score": stability_score, "max": 2, "status": "ok"})
+    else:
+        details.append({"item": "stability", "value": "insufficient_history", "score": 0, "max": 2, "status": "missing"})
+    score += stability_score
+
+    return round(score, 2), details
+
+
 # ==================== 风险评分 ====================
 
 def calculate_risk_score(financial: FinancialMetric, price: DailyPrice, tech: Optional[TechnicalIndicator] = None, industry_stats: Optional[dict] = None) -> tuple[float, list[dict]]:
@@ -639,22 +787,12 @@ def score_stock(
 
     # 获取 score_date 之前的最新财务数据（防止前视偏差）
     # 财务报告有滞后性：Q1 报告 4 月底出，Q2 报告 8 月底出，Q3 报告 10 月底出，年报 4 月底出
-    financial = (
-        db.query(FinancialMetric)
-        .filter(FinancialMetric.stock_id == stock_id, FinancialMetric.report_period <= score_date)
-        .order_by(FinancialMetric.report_period.desc())
-        .first()
-    )
+    financial = _latest_financial_for_stock(db, stock_id, score_date)
     if not financial:
         return None
 
     # 获取前一期财务数据（用于趋势判断）
-    prev_financial = (
-        db.query(FinancialMetric)
-        .filter(FinancialMetric.stock_id == stock_id, FinancialMetric.report_period < financial.report_period)
-        .order_by(FinancialMetric.report_period.desc())
-        .first()
-    )
+    prev_financial = _previous_financial_for_stock(db, stock_id, financial)
 
     # 获取 score_date 当日或之前的最新技术指标
     tech = (
@@ -863,6 +1001,119 @@ def score_all_stocks(db: Session, score_date: date) -> list[StockScore]:
 
         # 每 100 只 flush 一次
         if (i + 1) % 100 == 0:
+            db.flush()
+
+    db.commit()
+    return results
+
+
+def score_all_stocks(db: Session, score_date: date) -> list[StockScore]:
+    """Override legacy batch scoring to prioritize normalized financial report dates."""
+    stocks = db.query(Stock).filter(Stock.status == "ACTIVE").all()
+    if not stocks:
+        return []
+
+    stock_ids = [stock.id for stock in stocks]
+    industry_stats = _compute_industry_stats(db, stock_ids)
+
+    latest_price_subq = (
+        db.query(DailyPrice.stock_id, func.max(DailyPrice.trade_date).label("max_date"))
+        .filter(DailyPrice.stock_id.in_(stock_ids), DailyPrice.trade_date <= score_date)
+        .group_by(DailyPrice.stock_id)
+        .subquery()
+    )
+    price_rows = db.query(DailyPrice).join(
+        latest_price_subq,
+        (DailyPrice.stock_id == latest_price_subq.c.stock_id)
+        & (DailyPrice.trade_date == latest_price_subq.c.max_date),
+    ).all()
+    price_map = {row.stock_id: row for row in price_rows}
+
+    fin_map: dict[int, FinancialMetric] = {}
+    prev_fin_map: dict[int, FinancialMetric] = {}
+    for stock_id in stock_ids:
+        latest_financial = _latest_financial_for_stock(db, stock_id, score_date)
+        if not latest_financial:
+            continue
+        fin_map[stock_id] = latest_financial
+        previous_financial = _previous_financial_for_stock(db, stock_id, latest_financial)
+        if previous_financial:
+            prev_fin_map[stock_id] = previous_financial
+
+    latest_tech_subq = (
+        db.query(TechnicalIndicator.stock_id, func.max(TechnicalIndicator.trade_date).label("max_date"))
+        .filter(TechnicalIndicator.stock_id.in_(stock_ids), TechnicalIndicator.trade_date <= score_date)
+        .group_by(TechnicalIndicator.stock_id)
+        .subquery()
+    )
+    tech_rows = db.query(TechnicalIndicator).join(
+        latest_tech_subq,
+        (TechnicalIndicator.stock_id == latest_tech_subq.c.stock_id)
+        & (TechnicalIndicator.trade_date == latest_tech_subq.c.max_date),
+    ).all()
+    tech_map = {row.stock_id: row for row in tech_rows}
+
+    existing_scores = db.query(StockScore).filter(
+        StockScore.stock_id.in_(stock_ids),
+        StockScore.score_date == score_date,
+    ).all()
+    existing_map = {row.stock_id: row for row in existing_scores}
+
+    results: list[StockScore] = []
+    for index, stock in enumerate(stocks, start=1):
+        stock_id = stock.id
+        price = price_map.get(stock_id)
+        financial = fin_map.get(stock_id)
+        if not price or not financial:
+            continue
+
+        previous_financial = prev_fin_map.get(stock_id)
+        tech = tech_map.get(stock_id)
+        ind_stats = industry_stats.get(stock.industry) if stock.industry else None
+
+        quality_score, quality_details = calculate_quality_score(financial, previous_financial, ind_stats)
+        valuation_score, valuation_details = calculate_valuation_score(price, financial, ind_stats)
+        growth_score, growth_details = calculate_growth_score(financial)
+        trend_score, trend_details = calculate_trend_score(price, tech)
+        risk_score, risk_details = calculate_risk_score(financial, price, tech, ind_stats)
+
+        total_score = quality_score + valuation_score + growth_score + trend_score + risk_score
+        rating = get_rating(total_score)
+        all_details = quality_details + valuation_details + growth_details + trend_details + risk_details
+        strengths = [detail["item"] for detail in all_details if detail["score"] >= detail["max"] * 0.7]
+        weaknesses = [detail["item"] for detail in all_details if detail["max"] > 0 and detail["score"] <= detail["max"] * 0.3]
+        reason_summary = f"浼樺娍: {', '.join(strengths[:3])}" if strengths else ""
+        if weaknesses:
+            reason_summary += f" | 椋庨櫓: {', '.join(weaknesses[:3])}"
+
+        existing = existing_map.get(stock_id)
+        if existing:
+            existing.total_score = total_score
+            existing.quality_score = quality_score
+            existing.valuation_score = valuation_score
+            existing.growth_score = growth_score
+            existing.trend_score = trend_score
+            existing.risk_score = risk_score
+            existing.rating = rating
+            existing.reason_summary = reason_summary
+            score = existing
+        else:
+            score = StockScore(
+                stock_id=stock_id,
+                score_date=score_date,
+                total_score=total_score,
+                quality_score=quality_score,
+                valuation_score=valuation_score,
+                growth_score=growth_score,
+                trend_score=trend_score,
+                risk_score=risk_score,
+                rating=rating,
+                reason_summary=reason_summary,
+            )
+            db.add(score)
+
+        results.append(score)
+        if index % 100 == 0:
             db.flush()
 
     db.commit()

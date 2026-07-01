@@ -1,0 +1,90 @@
+{
+  "symbol": "300866",
+  "searchItem": {
+    "symbol": "300866",
+    "name": "安克创新",
+    "market": "A",
+    "exchange": "SZ",
+    "industry": null,
+    "status": "active",
+    "source": "search_stocks",
+    "updateTime": "2026-06-30T16:29:21",
+    "dataStatus": "PARTIAL",
+    "missingFields": [
+      "industry"
+    ],
+    "errorMessage": null
+  },
+  "quote": {
+    "symbol": "300866",
+    "name": null,
+    "market": "A",
+    "exchange": "UNKNOWN",
+    "tradeDate": null,
+    "price": null,
+    "change": null,
+    "changePct": null,
+    "open": null,
+    "high": null,
+    "low": null,
+    "preClose": null,
+    "volume": null,
+    "amount": null,
+    "turnoverRate": null,
+    "source": "adata",
+    "isRealtime": true,
+    "quoteStatusReason": null,
+    "updateTime": null,
+    "dataStatus": "EMPTY",
+    "missingFields": [
+      "price",
+      "change",
+      "changePct",
+      "open",
+      "high",
+      "low",
+      "preClose",
+      "volume",
+      "amount",
+      "realtimeQuote"
+    ],
+    "errorMessage": "未找到 300866 行情数据（实时+K线均为空）"
+  },
+  "kline": {
+    "symbol": "300866",
+    "period": "daily",
+    "items": [],
+    "source": "adata",
+    "updateTime": null,
+    "dataStatus": "EMPTY",
+    "missingFields": [
+      "klineData"
+    ],
+    "errorMessage": "get_market 返回空 DataFrame"
+  },
+  "financials": [],
+  "sourceSummary": {
+    "quoteSource": "unknown",
+    "klineSource": "unknown",
+    "financialsSource": "unknown",
+    "searchSource": "unknown"
+  },
+  "updateTime": "2026-06-30T16:29:33",
+  "dataStatus": "EMPTY",
+  "missingFields": [
+    "amount",
+    "change",
+    "changePct",
+    "financials",
+    "high",
+    "industry",
+    "klineData",
+    "low",
+    "open",
+    "preClose",
+    "price",
+    "realtimeQuote",
+    "volume"
+  ],
+  "errorMessage": "未找到股票 300866 的有效数据"
+}

@@ -1,6 +1,6 @@
 const zh: Record<string, string> = {
   // App
-  "app.name": "清算",
+  "app.name": "清数智算",
   "app.subtitle": "智能投研工作台",
   "app.description": "A股港股研究辅助系统",
   "app.disclaimer": "本系统仅用于研究和辅助分析，不构成任何投资建议。",

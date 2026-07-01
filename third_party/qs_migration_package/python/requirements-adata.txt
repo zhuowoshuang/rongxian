@@ -1,0 +1,17 @@
+# 清数智算数据依赖 — AData 数据源
+# 在清数智算 backend 中安装：
+#   pip install -r qs_migration_package/python/requirements-adata.txt
+#
+# 注意：AData 本身需要以可编辑模式安装
+#   pip install -e /path/to/adata
+
+requests>=2.16.0
+pandas>=0.22.0
+beautifulsoup4>=4.0.2
+py_mini_racer>=0.6.0
+mini-racer>=0.12.0
+
+# Python 3.12 兼容性注意：
+# - setuptools>=68 才能解决 pkgutil.ImpImporter 问题
+# - 推荐 setuptools>=70
+setuptools>=68.0

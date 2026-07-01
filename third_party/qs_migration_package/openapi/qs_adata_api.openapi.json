@@ -1,0 +1,206 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "清数智算 — AData 股票数据 API",
+    "version": "1.1.0",
+    "description": "基于 AData 开源项目的 A 股行情数据接口。数据源：东方财富/同花顺/百度/新浪/腾讯。\n\nDataStatus 语义：\n- OK: 核心数据正常\n- PARTIAL: 部分字段缺失/fallback/非实时\n- EMPTY: 代码合法但查无此股\n- ERROR: 参数非法/接口异常"
+  },
+  "servers": [{ "url": "/api/adata", "description": "清数智算 backend" }],
+  "paths": {
+    "/stocks/search": {
+      "get": {
+        "summary": "搜索股票",
+        "parameters": [
+          { "name": "keyword", "in": "query", "required": true, "schema": { "type": "string" }, "description": "股票代码或名称", "example": "300866" }
+        ],
+        "responses": {
+          "200": {
+            "description": "搜索结果",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/StockSearchItem" } } } }
+          }
+        }
+      }
+    },
+    "/stocks/{symbol}/quote": {
+      "get": {
+        "summary": "个股行情",
+        "parameters": [
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" }, "description": "6位股票代码", "example": "300866" }
+        ],
+        "responses": {
+          "200": {
+            "description": "行情数据（可能为实时或 K线 fallback）",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StockQuote" } } }
+          }
+        }
+      }
+    },
+    "/stocks/{symbol}/kline": {
+      "get": {
+        "summary": "个股K线",
+        "parameters": [
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" }, "example": "300866" },
+          { "name": "period", "in": "query", "schema": { "type": "string", "default": "daily", "enum": ["daily", "weekly", "monthly"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "K线数据",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StockKline" } } }
+          }
+        }
+      }
+    },
+    "/stocks/{symbol}/financials": {
+      "get": {
+        "summary": "个股财务",
+        "parameters": [
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" }, "example": "300866" }
+        ],
+        "responses": {
+          "200": {
+            "description": "财务指标列表",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/FinancialMetric" } } } }
+          }
+        }
+      }
+    },
+    "/stocks/{symbol}/bundle": {
+      "get": {
+        "summary": "个股综合数据包",
+        "parameters": [
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" }, "example": "300866" },
+          { "name": "period", "in": "query", "schema": { "type": "string", "default": "daily" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "综合数据包",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StockDataBundle" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DataStatus": { "type": "string", "enum": ["OK", "PARTIAL", "EMPTY", "ERROR"] },
+      "StockSearchItem": {
+        "type": "object",
+        "required": ["symbol", "dataStatus", "missingFields"],
+        "properties": {
+          "symbol": { "type": "string", "example": "300866" },
+          "name": { "type": "string", "nullable": true, "example": "安克创新" },
+          "market": { "type": "string", "example": "A" },
+          "exchange": { "type": "string", "example": "SZ" },
+          "industry": { "type": "string", "nullable": true },
+          "source": { "type": "string", "example": "AData-code-csv" },
+          "updateTime": { "type": "string", "nullable": true },
+          "dataStatus": { "$ref": "#/components/schemas/DataStatus" },
+          "missingFields": { "type": "array", "items": { "type": "string" } },
+          "errorMessage": { "type": "string", "nullable": true }
+        }
+      },
+      "StockQuote": {
+        "type": "object",
+        "required": ["symbol", "isRealtime", "dataStatus", "missingFields"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "name": { "type": "string", "nullable": true },
+          "market": { "type": "string" },
+          "exchange": { "type": "string" },
+          "tradeDate": { "type": "string", "nullable": true },
+          "price": { "type": "number", "nullable": true },
+          "change": { "type": "number", "nullable": true },
+          "changePct": { "type": "number", "nullable": true },
+          "open": { "type": "number", "nullable": true },
+          "high": { "type": "number", "nullable": true },
+          "low": { "type": "number", "nullable": true },
+          "preClose": { "type": "number", "nullable": true },
+          "volume": { "type": "integer", "nullable": true },
+          "amount": { "type": "number", "nullable": true },
+          "turnoverRate": { "type": "number", "nullable": true },
+          "source": { "type": "string", "example": "adata-realtime" },
+          "isRealtime": { "type": "boolean" },
+          "quoteStatusReason": { "type": "string", "nullable": true },
+          "updateTime": { "type": "string", "nullable": true },
+          "dataStatus": { "$ref": "#/components/schemas/DataStatus" },
+          "missingFields": { "type": "array", "items": { "type": "string" } },
+          "errorMessage": { "type": "string", "nullable": true }
+        }
+      },
+      "KlineBar": {
+        "type": "object",
+        "required": ["date", "open", "high", "low", "close", "volume", "amount"],
+        "properties": {
+          "date": { "type": "string", "example": "2026-06-30" },
+          "open": { "type": "number" },
+          "high": { "type": "number" },
+          "low": { "type": "number" },
+          "close": { "type": "number" },
+          "volume": { "type": "integer" },
+          "amount": { "type": "number" },
+          "turnoverRate": { "type": "number", "nullable": true }
+        }
+      },
+      "StockKline": {
+        "type": "object",
+        "required": ["symbol", "period", "items", "dataStatus", "missingFields"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "period": { "type": "string" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/KlineBar" } },
+          "source": { "type": "string" },
+          "updateTime": { "type": "string", "nullable": true },
+          "dataStatus": { "$ref": "#/components/schemas/DataStatus" },
+          "missingFields": { "type": "array", "items": { "type": "string" } },
+          "errorMessage": { "type": "string", "nullable": true }
+        }
+      },
+      "FinancialMetric": {
+        "type": "object",
+        "required": ["period", "dataStatus", "missingFields"],
+        "properties": {
+          "period": { "type": "string", "example": "2026-03-31" },
+          "revenue": { "type": "number", "nullable": true },
+          "revenueYoy": { "type": "number", "nullable": true },
+          "netProfit": { "type": "number", "nullable": true },
+          "profitYoy": { "type": "number", "nullable": true },
+          "grossMargin": { "type": "number", "nullable": true },
+          "netMargin": { "type": "number", "nullable": true },
+          "roe": { "type": "number", "nullable": true },
+          "debtRatio": { "type": "number", "nullable": true },
+          "eps": { "type": "number", "nullable": true },
+          "source": { "type": "string" },
+          "updateTime": { "type": "string", "nullable": true },
+          "dataStatus": { "$ref": "#/components/schemas/DataStatus" },
+          "missingFields": { "type": "array", "items": { "type": "string" } },
+          "errorMessage": { "type": "string", "nullable": true }
+        }
+      },
+      "SourceSummary": {
+        "type": "object",
+        "properties": {
+          "quoteSource": { "type": "string" },
+          "klineSource": { "type": "string" },
+          "financialsSource": { "type": "string" },
+          "searchSource": { "type": "string" }
+        }
+      },
+      "StockDataBundle": {
+        "type": "object",
+        "required": ["symbol", "dataStatus", "missingFields", "sourceSummary"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "searchItem": { "$ref": "#/components/schemas/StockSearchItem" },
+          "quote": { "$ref": "#/components/schemas/StockQuote" },
+          "kline": { "$ref": "#/components/schemas/StockKline" },
+          "financials": { "type": "array", "items": { "$ref": "#/components/schemas/FinancialMetric" } },
+          "sourceSummary": { "$ref": "#/components/schemas/SourceSummary" },
+          "updateTime": { "type": "string", "nullable": true },
+          "dataStatus": { "$ref": "#/components/schemas/DataStatus" },
+          "missingFields": { "type": "array", "items": { "type": "string" } },
+          "errorMessage": { "type": "string", "nullable": true }
+        }
+      }
+    }
+  }
+}

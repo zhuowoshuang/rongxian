@@ -39,7 +39,7 @@ class NotificationService:
             try:
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
-                msg["From"] = f"清算 <{sender}>"
+                msg["From"] = f"清数智算 <{sender}>"
                 msg["To"] = to_email
 
                 html_part = MIMEText(html_content, "html", "utf-8")
@@ -89,7 +89,7 @@ class NotificationService:
         return f"""
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
             <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:20px;border-radius:12px;color:white;text-align:center">
-                <h1 style="margin:0;font-size:24px">清算 每日报告</h1>
+                <h1 style="margin:0;font-size:24px">清数智算 每日报告</h1>
                 <p style="margin:8px 0 0;opacity:0.8">{date.today()} | 市场状态: {market_status}</p>
             </div>
 
@@ -197,12 +197,12 @@ class NotificationService:
         results = {"email": False, "feishu": False}
 
         if to_email:
-            subject = f"清算 每日报告 - {date.today()} | {market_status}"
+            subject = f"清数智算 每日报告 - {date.today()} | {market_status}"
             html = self.build_daily_email(market_status, signals, indices)
             results["email"] = self.send_email(to_email, subject, html)
 
         if feishu:
-            title = f"清算 每日报告 - {date.today()}"
+            title = f"清数智算 每日报告 - {date.today()}"
             content = self.build_daily_feishu(market_status, signals, indices)
             results["feishu"] = self.send_feishu(title, content)
 

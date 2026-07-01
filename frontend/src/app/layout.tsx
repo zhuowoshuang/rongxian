@@ -8,7 +8,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import ToastContainer from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
-  title: "清算 - 智能投研工作台",
+  title: "清数智算 - 智能投研工作台",
   description: "面向 A 股与港股研究场景的智能投研工作台",
   icons: {
     icon: "/favicon.png",

@@ -127,6 +127,7 @@ export function signalTypeLabel(type: string, t?: (key: string) => string): stri
     WATCH: "观察",
     REDUCE: "风险升高",
     SELL: "回避观察",
+    DATA_INSUFFICIENT: "数据质量受限",
   };
   return map[type] || type;
 }
@@ -211,13 +212,23 @@ export function getChangeColor(value: number | null | undefined): string {
   return value >= 0 ? "text-emerald-400" : "text-red-400";
 }
 
+export function normalizeMarketCode(market: string | null | undefined): string {
+  const normalized = (market || "").trim().toUpperCase();
+  if (normalized === "A_SHARE" || normalized === "A" || normalized === "SH" || normalized === "SZ") return "A_SHARE";
+  if (normalized === "HK" || normalized === "H_SHARE") return "HK";
+  return normalized || "UNKNOWN";
+}
+
 export function marketLabel(market: string, t?: (key: string) => string): string {
+  const normalized = normalizeMarketCode(market);
   if (t) {
-    const key = market === "A_SHARE" ? "market.aShare" : "market.hk";
-    const translated = t(key);
+    const key = normalized === "A_SHARE" ? "market.aShare" : normalized === "HK" ? "market.hk" : "";
+    const translated = key ? t(key) : "";
     if (translated !== key) return translated;
   }
-  return market === "A_SHARE" ? "A股" : "港股";
+  if (normalized === "A_SHARE") return "A股";
+  if (normalized === "HK") return "港股";
+  return "待核验";
 }
 
 export function runtimeStatusLabel(value: string | null | undefined): string {
@@ -252,4 +263,69 @@ export function dataModeLabel(value: string | null | undefined): string {
   if (value.includes("真实")) return "真实/混合数据";
   if (value.includes("模拟")) return "模拟数据";
   return runtimeStatusLabel(value);
+}
+
+export function displayTierLabel(value: string | null | undefined): string {
+  const map: Record<string, string> = {
+    formal_real: "正式研究",
+    real_observation: "风险观察",
+    data_quality_limited: "数据质量受限",
+    data_insufficient: "数据不足",
+    demo_only: "演示数据",
+  };
+  return map[value || ""] || "待核验";
+}
+
+export function displayTierTone(value: string | null | undefined): "live" | "database" | "warning" | "simulated" | "pending" {
+  const map: Record<string, "live" | "database" | "warning" | "simulated" | "pending"> = {
+    formal_real: "live",
+    real_observation: "database",
+    data_quality_limited: "warning",
+    data_insufficient: "pending",
+    demo_only: "simulated",
+  };
+  return map[value || ""] || "pending";
+}
+
+export function readinessLabel(value: string | null | undefined): string {
+  const map: Record<string, string> = {
+    ready_full: "完整链路",
+    no_data: "暂无数据",
+    data_quality_limited: "数据质量受限",
+    risk_observation: "风险观察",
+    formal_real: "正式研究样本",
+  };
+  return map[value || ""] || displayTierLabel(value);
+}
+
+export function scoreSourceLabel(value: string | null | undefined): string {
+  const map: Record<string, string> = {
+    real_calculated: "真实评分",
+    quick_seed_demo: "演示评分",
+    "Fixture-Only": "固定样例",
+    NETWORK_WARN: "网络受限",
+    EMPTY: "暂无数据",
+    ERROR: "数据异常",
+  };
+  return map[value || ""] || "待核验";
+}
+
+export function reportTypeLabel(value: string | null | undefined): string {
+  const map: Record<string, string> = {
+    STOCK: "股票",
+    REPORT: "报告",
+    DAILY: "日报",
+  };
+  return map[value || ""] || "报告";
+}
+
+export function dataStatusLabel(value: string | null | undefined): string {
+  const map: Record<string, string> = {
+    OK: "数据可用",
+    PARTIAL: "部分可用",
+    EMPTY: "暂无数据",
+    ERROR: "数据异常",
+    DATA_INSUFFICIENT: "数据质量受限",
+  };
+  return map[value || ""] || "待核验";
 }

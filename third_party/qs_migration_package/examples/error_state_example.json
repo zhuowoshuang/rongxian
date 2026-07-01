@@ -1,0 +1,92 @@
+{
+  "symbol": "999999",
+  "searchItem": {
+    "symbol": "999999",
+    "name": null,
+    "market": "A",
+    "exchange": "UNKNOWN",
+    "industry": null,
+    "status": "active",
+    "source": "adata",
+    "updateTime": "2026-06-30T16:31:12",
+    "dataStatus": "PARTIAL",
+    "missingFields": [
+      "name",
+      "industry"
+    ],
+    "errorMessage": "无法从 search/quote/code.csv 获取 999999 的名称"
+  },
+  "quote": {
+    "symbol": "999999",
+    "name": null,
+    "market": "A",
+    "exchange": "UNKNOWN",
+    "tradeDate": null,
+    "price": null,
+    "change": null,
+    "changePct": null,
+    "open": null,
+    "high": null,
+    "low": null,
+    "preClose": null,
+    "volume": null,
+    "amount": null,
+    "turnoverRate": null,
+    "source": "adata",
+    "isRealtime": true,
+    "quoteStatusReason": null,
+    "updateTime": null,
+    "dataStatus": "EMPTY",
+    "missingFields": [
+      "price",
+      "change",
+      "changePct",
+      "open",
+      "high",
+      "low",
+      "preClose",
+      "volume",
+      "amount",
+      "realtimeQuote"
+    ],
+    "errorMessage": "未找到 999999 行情数据（实时+K线均为空）"
+  },
+  "kline": {
+    "symbol": "999999",
+    "period": "daily",
+    "items": [],
+    "source": "adata",
+    "updateTime": null,
+    "dataStatus": "EMPTY",
+    "missingFields": [
+      "klineData"
+    ],
+    "errorMessage": "get_market 返回空 DataFrame"
+  },
+  "financials": [],
+  "sourceSummary": {
+    "quoteSource": "unknown",
+    "klineSource": "unknown",
+    "financialsSource": "unknown",
+    "searchSource": "unknown"
+  },
+  "updateTime": "2026-06-30T16:31:24",
+  "dataStatus": "EMPTY",
+  "missingFields": [
+    "amount",
+    "change",
+    "changePct",
+    "financials",
+    "high",
+    "industry",
+    "klineData",
+    "low",
+    "name",
+    "open",
+    "preClose",
+    "price",
+    "realtimeQuote",
+    "volume"
+  ],
+  "errorMessage": "未找到股票 999999 的有效数据"
+}

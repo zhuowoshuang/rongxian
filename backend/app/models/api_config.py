@@ -1,53 +1,94 @@
-"""API配置与调用管理模型"""
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, func, ForeignKey
+"""API configuration, quota and audit models."""
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
+
 from app.db.base import Base
 
 
 class ApiConfig(Base):
-    """API供应商配置表"""
+    """Platform-level provider configuration."""
     __tablename__ = "api_configs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    provider = Column(String(50), nullable=False, unique=True, comment="供应商: eastmoney/yahoo/akshare/llm")
-    display_name = Column(String(100), comment="显示名称")
-    api_key = Column(String(500), comment="API密钥（加密存储）")
-    api_secret = Column(String(500), comment="API密钥")
-    base_url = Column(String(500), comment="基础URL")
-    is_enabled = Column(Boolean, default=True, comment="是否启用")
-    daily_limit = Column(Integer, default=1000, comment="每日总调用上限")
-    rate_limit = Column(Integer, default=10, comment="每分钟频率限制")
-    config_json = Column(String(2000), comment="额外配置JSON")
+    provider = Column(String(50), nullable=False, unique=True, comment="provider key")
+    display_name = Column(String(100), comment="display name")
+    api_key = Column(String(500), comment="encrypted api key")
+    api_secret = Column(String(500), comment="encrypted api secret")
+    base_url = Column(String(500), comment="base url")
+    is_enabled = Column(Boolean, default=True, comment="enabled")
+    daily_limit = Column(Integer, default=1000, comment="daily call limit")
+    rate_limit = Column(Integer, default=10, comment="per-minute rate limit")
+    config_json = Column(String(2000), comment="extra json config")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class UserApiQuota(Base):
-    """用户API配额表"""
+    """Per-user quota overrides."""
     __tablename__ = "user_api_quotas"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
-    daily_report_limit = Column(Integer, default=5, comment="每日报告生成上限")
-    daily_backtest_limit = Column(Integer, default=3, comment="每日回测上限")
-    daily_search_limit = Column(Integer, default=100, comment="每日搜索上限")
-    daily_pdf_limit = Column(Integer, default=10, comment="每日PDF下载上限")
-    can_download_pdf = Column(Boolean, default=True, comment="是否允许下载PDF")
-    can_use_style_report = Column(Boolean, default=True, comment="是否允许风格报告")
-    can_use_simulation = Column(Boolean, default=True, comment="是否允许模拟买入")
+    daily_report_limit = Column(Integer, default=20, comment="daily report generation limit")
+    daily_backtest_limit = Column(Integer, default=20, comment="daily backtest limit")
+    daily_search_limit = Column(Integer, default=100, comment="daily search limit")
+    daily_pdf_limit = Column(Integer, default=30, comment="daily PDF download limit")
+    daily_png_limit = Column(Integer, default=30, comment="daily PNG download limit")
+    max_api_configs = Column(Integer, default=5, comment="max user API configs")
+    can_download_pdf = Column(Boolean, default=True, comment="can download PDF")
+    can_use_style_report = Column(Boolean, default=True, comment="can use style report")
+    can_use_simulation = Column(Boolean, default=True, comment="can use simulation")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class ApiCallLog(Base):
-    """API调用日志表"""
+    """Low-level API call log kept for compatibility with existing stats."""
     __tablename__ = "api_call_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, index=True, comment="用户ID")
-    username = Column(String(50), comment="用户名")
-    provider = Column(String(50), comment="API供应商")
-    endpoint = Column(String(200), comment="调用接口")
-    method = Column(String(10), comment="请求方法")
-    status_code = Column(Integer, comment="响应状态码")
-    response_time = Column(Integer, comment="响应时间(ms)")
-    error_msg = Column(String(500), comment="错误信息")
+    user_id = Column(Integer, index=True, comment="user id")
+    username = Column(String(50), comment="username")
+    provider = Column(String(50), comment="provider")
+    endpoint = Column(String(200), comment="endpoint")
+    method = Column(String(10), comment="method")
+    status_code = Column(Integer, comment="status code")
+    response_time = Column(Integer, comment="response time ms")
+    error_msg = Column(String(500), comment="error message")
     called_at = Column(DateTime, server_default=func.now(), index=True)
+
+
+class OperationLog(Base):
+    """Unified audit log for user, report, backtest and admin operations."""
+    __tablename__ = "operation_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=True)
+    username = Column(String(80), nullable=True)
+    phone = Column(String(32), nullable=True)
+    role = Column(String(30), nullable=True)
+    action = Column(String(80), nullable=False, index=True)
+    target_type = Column(String(80), nullable=False, index=True)
+    target_id = Column(String(80), nullable=True)
+    status = Column(String(20), nullable=False, default="success", index=True)
+    message = Column(String(500), nullable=True)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(300), nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+
+class UserApiConfig(Base):
+    """User-owned API/LLM configuration. API keys are masked in responses."""
+    __tablename__ = "user_api_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    provider = Column(String(80), nullable=False)
+    base_url = Column(String(500), nullable=True)
+    api_key = Column(String(500), nullable=True)
+    model_name = Column(String(120), nullable=True)
+    is_default = Column(Boolean, default=False)
+    note = Column(Text, nullable=True)
+    status = Column(String(20), default="active")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

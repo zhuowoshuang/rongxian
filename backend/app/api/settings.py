@@ -113,7 +113,7 @@ def test_notification(
             raise HTTPException(status_code=400, detail="未配置收件邮箱")
         result = service.send_email(
             recipient,
-            "清算 测试邮件",
+            "清数智算 测试邮件",
             service.build_daily_email("中性偏多", test_signals, test_indices),
         )
         if result:
@@ -123,7 +123,7 @@ def test_notification(
 
     elif type == "feishu":
         result = service.send_feishu(
-            "清算 测试消息",
+            "清数智算 测试消息",
             service.build_daily_feishu("中性偏多", test_signals, test_indices),
         )
         if result:

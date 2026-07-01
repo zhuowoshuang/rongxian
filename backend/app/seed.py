@@ -8,6 +8,7 @@ import logging
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import date, timedelta
+from sqlalchemy import func
 from app.db.session import SessionLocal, engine
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,11 @@ from app.models.trade_signal import TradeSignal
 from app.models.report import Report
 from app.models.portfolio import Portfolio, PortfolioPosition
 from app.data_providers import get_provider
+from app.services.financial_periods import normalize_report_period_to_date
+from app.services.scoring import _latest_financial_for_stock
 from app.services.scoring import calculate_quality_score, calculate_valuation_score, calculate_growth_score, calculate_trend_score, calculate_risk_score, get_rating
 from app.services.signal import determine_signal_type, calculate_position, calculate_prices
+from app.services.real_pipeline import run_real_pipeline_sample
 from app.core.constants import SignalStatus
 from app.models.user import User
 from app.models.setting import Setting
@@ -70,7 +74,7 @@ CORE_STOCKS = get_all_stocks()
 def seed(force: bool = False):
     """执行数据种子 - 使用真实东方财富数据"""
     print("=" * 60)
-    print("清算 数据初始化 (东方财富真实数据)")
+    print("清数智算 数据初始化 (东方财富真实数据)")
     print("=" * 60)
 
     Base.metadata.create_all(bind=engine)
@@ -201,6 +205,7 @@ def seed(force: bool = False):
                 rows.append(FinancialMetric(
                     stock_id=stock_id,
                     report_period=row.get("report_period", ""),
+                    report_date=normalize_report_period_to_date(row.get("report_period", "")),
                     revenue=_safe_round(row.get("revenue"), 2),
                     revenue_yoy=_safe_round(row.get("revenue_yoy"), 2),
                     net_profit=_safe_round(row.get("net_profit"), 2),
@@ -249,9 +254,7 @@ def seed(force: bool = False):
         latest_price = db.query(DailyPrice).filter(
             DailyPrice.stock_id == stock_id
         ).order_by(DailyPrice.trade_date.desc()).first()
-        latest_fin = db.query(FinancialMetric).filter(
-            FinancialMetric.stock_id == stock_id
-        ).order_by(FinancialMetric.report_period.desc()).first()
+        latest_fin = _latest_financial_for_stock(db, stock_id)
         if latest_price and latest_fin:
             if latest_fin.eps and latest_fin.eps > 0:
                 latest_price.pe = round(latest_price.close / latest_fin.eps, 2)
@@ -604,10 +607,26 @@ def refresh_daily():
 
     print(f"  Price refresh completed for {len(stock_map)} stocks")
 
-    # 重新评分和生成信号
-    _score_stocks(db, stock_map, today)
-    _generate_signals(db, today)
-    generate_daily_report(db, today)
+    # 重新评分和生成信号（真实流水线，带锁与任务日志）
+    import os
+    from app.services.real_pipeline import run_real_pipeline_sample
+
+    pipeline_limit = min(int(os.environ.get("DAILY_PIPELINE_LIMIT", "300")), 300)
+    pipeline_result = run_real_pipeline_sample(
+        db,
+        limit=pipeline_limit,
+        provider=provider,
+        trigger_source="scheduler",
+    )
+    if pipeline_result.get("status") == "skipped_locked":
+        print("  Real pipeline skipped: another job is running")
+    else:
+        print(
+            f"  Real pipeline: {pipeline_result.get('after', {}).get('real_scores', 0)} real scores, "
+            f"{pipeline_result.get('after', {}).get('real_signals', 0)} real signals, "
+            f"job_id={pipeline_result.get('refresh_job_run_id')}"
+        )
+    generate_daily_report(db, db.query(func.max(DailyPrice.trade_date)).scalar() or today)
 
     db.close()
     print(f"[{today}] Daily refresh completed.")

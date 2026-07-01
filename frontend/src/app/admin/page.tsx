@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
 import {
   getAdminStats, getAdminUsers, updateAdminUser, disableAdminUser,
@@ -10,7 +9,14 @@ import {
   getUserQuotas, updateUserQuota,
   getApiLogs, getApiStats,
   getAdminSystemStatus,
+  getAdminScoreDiagnostics,
   getOperationLogSummary,
+  getAdminUsageRankings,
+  getAuditLogs,
+  exportAuditLogsExcel,
+  exportAdminUsersExcel,
+  resetAdminUserPassword,
+  getAdminWatchlistStats,
   getAdminStocks, updateAdminStock, deleteAdminStock, adminSyncStocks, adminFetchStock,
   getAdminScores, updateAdminScore,
   getAdminSignals, updateAdminSignal, deleteAdminSignal,
@@ -22,6 +28,7 @@ import type {
   AdminSignalItem, AdminSignalResponse,
   AdminUserItem, ApiConfigItem, AdminTableInfo, AdminTableDataResponse,
   RuntimeInfo,
+  ScoreDiagnosticsResponse,
 } from "@/types";
 import GlassCard from "@/components/ui/GlassCard";
 import TabSwitch from "@/components/ui/TabSwitch";
@@ -29,22 +36,30 @@ import { SkeletonCard } from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import DataStatusBadge from "@/components/ui/DataStatusBadge";
 import { Shield, Users, Database, BarChart3, AlertCircle, CheckCircle, Key, Activity, Settings, Search, Plus, RefreshCw, Trash2, Edit3, Save, X, Download, Zap } from "lucide-react";
+import { displayTierLabel, displayTierTone, sanitizeDisplayText, signalTypeLabel } from "@/lib/utils";
 
 export default function AdminPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const router = useRouter();
 
-  useEffect(() => {
-    if (user && user.role !== "admin") {
-      router.replace("/");
-    }
-  }, [user, router]);
-
-  if (user && user.role !== "admin") return null;
+  if (user && user.role !== "admin") {
+    return (
+      <div className="mx-auto max-w-[960px] p-6" style={{ background: "var(--bg-page)" }}>
+        <EmptyState
+          message="权限不足"
+          description="当前账号可以使用研究功能，但无权访问管理员运行驾驶舱。请使用管理员账号登录后再查看。"
+        />
+      </div>
+    );
+  }
 
   const [activeTab, setActiveTab] = useState("overview");
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab) setActiveTab(tab);
+  }, []);
 
   const showMsg = (type: "ok" | "err", text: string) => {
     setMsg({ type, text });
@@ -76,6 +91,8 @@ export default function AdminPage() {
           { key: "users", label: t("admin.tabUsers") },
           { key: "database", label: t("admin.tabDatabase") },
           { key: "api-config", label: t("admin.tabApiConfig") },
+          { key: "exports", label: "导出管理" },
+          { key: "audit", label: "审计日志" },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -98,6 +115,8 @@ export default function AdminPage() {
       {activeTab === "users" && <UsersTab showMsg={showMsg} />}
       {activeTab === "database" && <DatabaseTab />}
       {activeTab === "api-config" && <ApiConfigTab showMsg={showMsg} />}
+      {activeTab === "audit" && <AuditTab showMsg={showMsg} />}
+      {activeTab === "exports" && <ExportsTab showMsg={showMsg} />}
 
       <div className="disclaimer">{t("app.disclaimer")}</div>
     </div>
@@ -171,14 +190,18 @@ function Pagination({ page, total, pageSize, onChange }: { page: number; total: 
 function OverviewTab() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<RuntimeInfo | null>(null);
+  const [scoreDiagnostics, setScoreDiagnostics] = useState<ScoreDiagnosticsResponse | null>(null);
   const [logSummary, setLogSummary] = useState<Record<string, any> | null>(null);
+  const [watchStats, setWatchStats] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getAdminSystemStatus(), getOperationLogSummary().catch(() => null)])
-      .then(([systemStatus, summary]) => {
+    Promise.all([getAdminSystemStatus(), getAdminScoreDiagnostics().catch(() => null), getOperationLogSummary().catch(() => null), getAdminWatchlistStats().catch(() => null)])
+      .then(([systemStatus, diagnosticsValue, summary, watchlist]) => {
         setStatus(systemStatus);
+        setScoreDiagnostics(diagnosticsValue);
         setLogSummary(summary);
+        setWatchStats(watchlist);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -188,7 +211,11 @@ function OverviewTab() {
 
   const counts = (status?.counts || {}) as Record<string, number>;
   const updates = (status?.latest_updates || {}) as Record<string, string | null>;
-  const security = (status?.security || {}) as Record<string, boolean>;
+  const security = (status?.security || {}) as {
+    default_password_warning?: boolean;
+    default_password_accounts?: string[];
+    default_password_risk_level?: string;
+  };
   const apiCfg = (status?.api_configured || {}) as Record<string, number>;
 
   return (
@@ -211,6 +238,153 @@ function OverviewTab() {
         ))}
       </div>
 
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {[
+          { label: "真实评分数量", value: status?.real_score_count ?? 0 },
+          { label: "演示评分数量", value: status?.demo_score_count ?? 0 },
+          { label: "真实信号数量", value: status?.real_signal_count ?? 0 },
+          { label: "演示信号数量", value: status?.demo_signal_count ?? 0 },
+          { label: "财务数据数量", value: status?.financial_metrics_count ?? 0 },
+          { label: "技术指标数量", value: status?.technical_indicators_count ?? 0 },
+        ].map((item) => (
+          <GlassCard key={item.label} className="text-center">
+            <p className="text-2xl font-bold text-[var(--text-primary)] font-mono">{item.value.toLocaleString()}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1">{item.label}</p>
+          </GlassCard>
+        ))}
+      </div>
+
+      <GlassCard title="真实数据覆盖中心">
+        <div className="space-y-4">
+          <div className={`rounded-lg border p-3 text-sm ${(status?.real_score_count ?? 0) === 0 ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+            {status?.coverage_message || ((status?.real_score_count ?? 0) === 0
+              ? "真实评分尚未生成，C 端只展示行情和数据状态。"
+              : `真实评分已小样本跑通，覆盖 ${status?.real_score_count ?? 0} 条评分记录。`)}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            {[
+              { label: "行情覆盖股票", value: status?.data_coverage?.daily_prices_stocks ?? counts.prices ?? 0 },
+              { label: "财务覆盖股票", value: status?.data_coverage?.financial_metrics_stocks ?? 0 },
+              { label: "技术指标覆盖", value: status?.data_coverage?.technical_indicators_stocks ?? 0 },
+              { label: "可评分股票", value: status?.data_coverage?.scoreable_stock_count ?? 0 },
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg border border-[var(--border-subtle)] p-3">
+                <p className="text-caption">{item.label}</p>
+                <p className="text-lg font-mono font-semibold">{Number(item.value).toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            {[
+              { label: "最新行情", value: updates.prices },
+              { label: "最新财务期", value: status?.data_coverage?.latest_financial_period },
+              { label: "最新技术指标", value: updates.technicals || status?.data_coverage?.latest_technical_date },
+              { label: "最新真实评分", value: updates.latest_real_score_date },
+              { label: "最新真实信号", value: updates.latest_real_signal_date },
+            ].map((item) => (
+              <div key={item.label} className="flex justify-between gap-3">
+                <span className="text-caption">{item.label}</span>
+                <span className="font-mono">{item.value || "暂无"}</span>
+              </div>
+            ))}
+          </div>
+          {(status?.recent_refresh_jobs?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-caption mb-2">最近刷新任务（最多10条）</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[var(--text-muted)]">
+                      <th className="py-1 pr-2">ID</th>
+                      <th className="py-1 pr-2">状态</th>
+                      <th className="py-1 pr-2">样本</th>
+                      <th className="py-1 pr-2">财务</th>
+                      <th className="py-1 pr-2">技术</th>
+                      <th className="py-1 pr-2">评分</th>
+                      <th className="py-1 pr-2">信号</th>
+                      <th className="py-1">触发</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(status?.recent_refresh_jobs || []).slice(0, 10).map((job) => (
+                      <tr key={job.id} className="border-t border-[var(--border-subtle)]">
+                        <td className="py-1 pr-2 font-mono">{job.id}</td>
+                        <td className="py-1 pr-2">{job.status}</td>
+                        <td className="py-1 pr-2">{job.sample_size ?? "-"}</td>
+                        <td className="py-1 pr-2">{job.financial_success}/{job.financial_attempted}</td>
+                        <td className="py-1 pr-2">{job.technical_success}/{job.technical_attempted}</td>
+                        <td className="py-1 pr-2">{job.scores_success}/{job.scores_attempted}</td>
+                        <td className="py-1 pr-2">{job.signals_success}/{job.signals_attempted}</td>
+                        <td className="py-1">{job.trigger_source}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </GlassCard>
+
+      {scoreDiagnostics && (
+        <GlassCard title="真实评分诊断">
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <DataStatusBadge label={`真实样本 ${scoreDiagnostics.summary.real_count}`} tone="live" />
+              <DataStatusBadge label={`演示样本 ${scoreDiagnostics.summary.demo_count}`} tone="simulated" />
+              <DataStatusBadge label={`评分日期 ${scoreDiagnostics.summary.score_date || "待核验"}`} tone="database" />
+            </div>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {sanitizeDisplayText(scoreDiagnostics.summary.message, "用于解释当前真实评分结果结构，不对模型分数做人工修饰。")}
+            </p>
+            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {[
+                { label: "平均总分", value: scoreDiagnostics.summary.averages?.total_score },
+                { label: "质量均分", value: scoreDiagnostics.summary.averages?.quality_score },
+                { label: "估值均分", value: scoreDiagnostics.summary.averages?.valuation_score },
+                { label: "成长均分", value: scoreDiagnostics.summary.averages?.growth_score },
+                { label: "趋势均分", value: scoreDiagnostics.summary.averages?.trend_score },
+                { label: "风险均分", value: scoreDiagnostics.summary.averages?.risk_score },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg border border-[var(--border-subtle)] p-3">
+                  <p className="text-caption">{item.label}</p>
+                  <p className="text-lg font-mono font-semibold text-[var(--text-primary)]">{item.value ?? "--"}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(scoreDiagnostics.display_tier_distribution || {}).map(([key, value]) => (
+                <DataStatusBadge key={key} label={`${displayTierLabel(key)} ${value}`} tone={displayTierTone(key)} />
+              ))}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="rounded-lg border border-[var(--border-subtle)] p-3">
+                <p className="text-caption mb-2">低分主因</p>
+                <div className="space-y-2 text-sm text-[var(--text-secondary)]">
+                  {(scoreDiagnostics.low_score_reasons || []).slice(0, 5).map((item) => (
+                    <div key={item.reason} className="flex items-center justify-between gap-3">
+                      <span>{sanitizeDisplayText(item.reason, "待核验")}</span>
+                      <span className="font-mono text-[var(--text-primary)]">{item.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-[var(--border-subtle)] p-3">
+                <p className="text-caption mb-2">真实信号结构</p>
+                <div className="space-y-2 text-sm text-[var(--text-secondary)]">
+                  {Object.entries(scoreDiagnostics.signal_distribution || {}).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between gap-3">
+                      <span>{signalTypeLabel(key)}</span>
+                      <span className="font-mono text-[var(--text-primary)]">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
       {/* 系统状态 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <GlassCard title="系统状态">
@@ -223,18 +397,62 @@ function OverviewTab() {
               <span className="text-caption">Redis 状态</span>
               <DataStatusBadge label={status?.redis === "ok" ? "正常" : "不可用"} tone={status?.redis === "ok" ? "live" : "simulated"} />
             </div>
+            {status?.redis !== "ok" && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                缓存服务：内存模式运行中（本地演示环境无需 Redis）
+              </div>
+            )}
             <div className="flex justify-between items-center">
               <span className="text-caption">数据源模式</span>
-              <DataStatusBadge label={status?.data_mode || "待核验"} tone={status?.provider_mode === "mock" ? "simulated" : "live"} />
+              <DataStatusBadge label={status?.data_mode_label || status?.data_mode || "待核验"} tone={status?.provider_mode === "mock" ? "simulated" : "live"} />
+            </div>
+            {status?.provider_mode !== "mock" && (status?.real_signal_count ?? 0) === 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                数据源：真实行情已接入，正式信号待评分扩展
+              </div>
+            )}
+            <div className="flex justify-between items-center">
+              <span className="text-caption">真实评分链路</span>
+              <DataStatusBadge
+                label={
+                  status?.real_pipeline_status === "ready"
+                    ? "小样本真实闭环已打通"
+                    : status?.real_pipeline_status === "partial_ready"
+                      ? "部分真实评分已生成"
+                      : status?.real_pipeline_status === "financial_missing"
+                        ? "财务数据待刷新"
+                        : status?.real_pipeline_status === "financial_ready_only"
+                          ? "财务已接入，待补技术指标"
+                          : status?.real_pipeline_status === "technical_ready_only"
+                            ? "技术指标已就绪"
+                            : status?.real_pipeline_status === "provider_failed"
+                              ? "财务 Provider 失败"
+                              : "仅有真实行情"
+                }
+                tone={status?.real_pipeline_status === "ready" ? "live" : "warning"}
+              />
             </div>
             <div className="flex justify-between items-center">
               <span className="text-caption">API 配置</span>
               <span className="text-body text-sm">{apiCfg.enabled || 0} / {apiCfg.total || 0} 已启用</span>
             </div>
             {security.default_password_warning && (
-              <div className="flex justify-between items-center">
-                <span className="text-caption">默认密码风险</span>
-                <DataStatusBadge label="存在默认密码" tone="warning" />
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-caption">默认密码风险</span>
+                  <DataStatusBadge
+                    label={security.default_password_risk_level === "critical" ? "生产高风险" : "开发验收账号存在"}
+                    tone="warning"
+                  />
+                </div>
+                <p className="mt-2">
+                  系统检测到默认开发账号仍在使用，生产部署前必须修改。
+                </p>
+              </div>
+            )}
+            {status?.warning && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                {status.warning}
               </div>
             )}
           </div>
@@ -258,11 +476,63 @@ function OverviewTab() {
         </GlassCard>
       </div>
 
+      <GlassCard title="关注股票统计">
+        <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "总关注数", value: watchStats?.summary?.total_items ?? 0 },
+              { label: "今日新增关注", value: watchStats?.summary?.today_added ?? 0 },
+              { label: "关注用户数", value: watchStats?.summary?.total_users ?? 0 },
+              { label: "快照已就绪", value: watchStats?.summary?.snapshots_ready ?? 0 },
+              { label: "高波动关注数", value: watchStats?.summary?.high_volatility_watch_count ?? 0 },
+              { label: "关注后回测", value: watchStats?.summary?.backtests_after_watch ?? 0 },
+              { label: "关注后报告", value: watchStats?.summary?.reports_after_watch ?? 0 },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-[var(--border-default)] bg-slate-50 p-3">
+                <p className="text-xs text-[var(--text-secondary)]">{item.label}</p>
+                <p className="mt-2 text-xl font-bold text-[var(--text-primary)] font-mono">{item.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-[var(--border-default)] bg-white p-4">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">TOP 关注股票</p>
+              <div className="mt-3 space-y-2">
+                {(watchStats?.top_watched || []).slice(0, 8).map((item: any) => (
+                  <div key={item.stock_code} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                    <div>
+                      <div className="font-mono text-slate-900">{item.stock_code}</div>
+                      <div className="text-xs text-slate-500">{item.stock_name || "未命名"} · {item.industry || "未分类"}</div>
+                    </div>
+                    <div className="font-mono text-slate-900">{item.watch_count}</div>
+                  </div>
+                ))}
+                {(!watchStats?.top_watched || watchStats.top_watched.length === 0) && <div className="text-xs text-slate-500">暂无关注数据</div>}
+              </div>
+            </div>
+            <div className="rounded-xl border border-[var(--border-default)] bg-white p-4">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">行业分布</p>
+              <div className="mt-3 space-y-2">
+                {(watchStats?.industry_distribution || []).slice(0, 8).map((item: any) => (
+                  <div key={item.industry} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                    <span className="text-slate-700">{item.industry || "未分类"}</span>
+                    <span className="font-mono text-slate-900">{item.watch_count}</span>
+                  </div>
+                ))}
+                {(!watchStats?.industry_distribution || watchStats.industry_distribution.length === 0) && <div className="text-xs text-slate-500">暂无关注数据</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+
       {/* 研究口径说明 */}
       <GlassCard title="运行与操作摘要">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {[
             { label: "最近报告生成", item: logSummary?.latest_report_generate },
+            { label: "最近 HTML 查看", item: logSummary?.latest_html_view },
+            { label: "最近 PNG 导出", item: logSummary?.latest_png_export },
             { label: "最近 PDF 导出", item: logSummary?.latest_pdf_export },
             { label: "最近回测 / 模拟", item: logSummary?.latest_backtest },
             { label: "最近 API 配置 / 管理操作", item: logSummary?.latest_admin_action },
@@ -718,18 +988,44 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
   const { t } = useTranslation();
   const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<"all" | "7" | "30" | "custom">("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [sortBy, setSortBy] = useState<"report_count" | "downloads" | "last_login_at">("report_count");
+  const [rankings, setRankings] = useState<Record<string, any[]>>({});
 
-  useEffect(() => {
-    getAdminUsers().then(setUsers).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const fetchUsers = () => {
+    setLoading(true);
+    getAdminUsers().then(setUsers).catch((e: any) => showMsg("err", e.message || "用户运营统计加载失败")).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  const filteredUsers = useMemo(() => {
+    const now = Date.now();
+    const lower = range === "7" ? now - 7 * 86400000 : range === "30" ? now - 30 * 86400000 : null;
+    return [...users].filter((u) => {
+      const t = u.created_at ? new Date(u.created_at).getTime() : 0;
+      if (lower && t < lower) return false;
+      if (range === "custom") {
+        if (startDate && t < new Date(startDate).getTime()) return false;
+        if (endDate && t > new Date(`${endDate}T23:59:59`).getTime()) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      if (sortBy === "downloads") return ((b.pdf_downloads || 0) + (b.png_downloads || 0)) - ((a.pdf_downloads || 0) + (a.png_downloads || 0));
+      if (sortBy === "last_login_at") return new Date(b.last_login_at || 0).getTime() - new Date(a.last_login_at || 0).getTime();
+      return (b.report_count || 0) - (a.report_count || 0);
+    });
+  }, [users, range, startDate, endDate, sortBy]);
 
   const handleRoleToggle = async (user: AdminUserItem) => {
     const newRole = user.role === "admin" ? "user" : "admin";
-    if (!confirm(`${user.username}: ${user.role} → ${newRole}?`)) return;
+    if (!confirm(`${user.user_id || user.username}: ${user.role} → ${newRole}?`)) return;
     try {
       await updateAdminUser(user.id, { role: newRole });
       setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: newRole } : u));
-      showMsg("ok", `${user.username} → ${newRole}`);
+      showMsg("ok", `${user.user_id || user.username} → ${newRole}`);
     } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
@@ -746,25 +1042,60 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
     } catch (e: any) { showMsg("err", e.message || t("admin.operationFailed")); }
   };
 
+  const handleResetPassword = async (user: AdminUserItem) => {
+    const password = window.prompt(`为 ${user.user_id || user.username} 设置新密码（至少 8 位，不会在页面展示）`);
+    if (!password) return;
+    if (!confirm("确认重置该用户密码？该操作不会显示明文密码。")) return;
+    try {
+      await resetAdminUserPassword(user.id, password);
+      showMsg("ok", "密码已重置");
+    } catch (e: any) { showMsg("err", e.message || "重置密码失败"); }
+  };
+
+  const handleExport = async () => {
+    try {
+      await exportAdminUsersExcel();
+      showMsg("ok", "Excel 导出已开始");
+    } catch (e: any) { showMsg("err", e.message || "Excel 导出失败"); }
+  };
+
   if (loading) return <SkeletonCard />;
 
   return (
-    <GlassCard title={t("admin.userManagement")}>
+    <GlassCard title="用户运营统计">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap gap-2">
+          {[["all", "全部"], ["7", "最近7天"], ["30", "最近30天"], ["custom", "自定义"]].map(([key, label]) => (
+            <button key={key} onClick={() => setRange(key as any)} className={`rounded-lg px-3 py-2 text-xs ${range === key ? "bg-primary-500/15 text-primary-400 border border-primary-500/30" : "bg-white/[0.05] text-dark-muted"}`}>{label}</button>
+          ))}
+        </div>
+        {range === "custom" && (
+          <>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-dark-text" />
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-dark-text" />
+          </>
+        )}
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-dark-text">
+          <option value="report_count">按报告总数</option>
+          <option value="downloads">按下载次数</option>
+          <option value="last_login_at">按最近活跃</option>
+        </select>
+        <button onClick={handleExport} className="rounded-lg bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-400 border border-emerald-500/30">导出 Excel</button>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[1180px] text-sm">
           <thead>
             <tr className="border-b border-white/[0.06]">
-              {["ID", t("admin.userUsername"), t("admin.userDisplayName"), t("admin.userRole"), t("admin.userStatus"), t("admin.userCreatedAt"), t("admin.userActions")].map((h) => (
+              {["手机号", "用户ID", "角色", "状态", "注册时间", "最近登录", "报告总数", "报告类型分布", "HTML查看", "PNG下载", "PDF下载", "最近报告", "API配置", "操作"].map((h) => (
                 <th key={h} className="text-left py-3 px-3 text-dark-muted font-medium text-xs">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {filteredUsers.map((u) => (
               <tr key={u.id} className="border-b border-white/[0.03] hover:bg-white/[0.03]">
-                <td className="py-3 px-3 font-mono text-xs text-dark-text">{u.id}</td>
-                <td className="py-3 px-3 font-medium text-dark-text">{u.username}</td>
-                <td className="py-3 px-3 text-dark-text">{u.display_name}</td>
+                <td className="py-3 px-3 font-mono text-xs text-dark-text">{u.phone || "-"}</td>
+                <td className="py-3 px-3 font-medium text-dark-text">{u.user_id || u.username}</td>
                 <td className="py-3 px-3">
                   <Badge text={u.role} className={u.role === "admin" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"} />
                 </td>
@@ -772,6 +1103,14 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
                   <Badge text={u.is_active ? t("admin.userActive") : t("admin.userDisabled")} className={u.is_active ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"} />
                 </td>
                 <td className="py-3 px-3 text-xs text-dark-muted">{u.created_at?.slice(0, 19)}</td>
+                <td className="py-3 px-3 text-xs text-dark-muted">{u.last_login_at?.slice(0, 19) || "暂无记录"}</td>
+                <td className="py-3 px-3 font-mono text-dark-text">{u.report_count || 0}</td>
+                <td className="py-3 px-3 text-xs text-dark-muted">系统/个股统计待细分</td>
+                <td className="py-3 px-3 font-mono text-dark-text">{u.html_views || 0}</td>
+                <td className="py-3 px-3 font-mono text-dark-text">{u.png_downloads || 0}</td>
+                <td className="py-3 px-3 font-mono text-dark-text">{u.pdf_downloads || 0}</td>
+                <td className="py-3 px-3 text-xs text-dark-muted">{u.last_report_at || "暂无记录"}</td>
+                <td className="py-3 px-3 font-mono text-dark-text">{u.api_config_count || 0}</td>
                 <td className="py-3 px-3">
                   <div className="flex gap-1">
                     <button onClick={() => handleRoleToggle(u)} className="text-xs px-2 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-dark-muted hover:text-white transition-colors">
@@ -779,6 +1118,9 @@ function UsersTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => 
                     </button>
                     <button onClick={() => handleActiveToggle(u)} className={`text-xs px-2 py-1 rounded-lg transition-colors ${u.is_active ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"}`}>
                       {u.is_active ? t("admin.userDisable") : t("admin.userEnable")}
+                    </button>
+                    <button onClick={() => handleResetPassword(u)} className="text-xs px-2 py-1 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
+                      重置密码
                     </button>
                   </div>
                 </td>
@@ -882,6 +1224,161 @@ function DatabaseTab() {
 // API配置
 // ══════════════════════════════════════════════════════════
 
+function AuditTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [rankings, setRankings] = useState<Record<string, any[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ range: "all", user_keyword: "", action: "", status: "", start_date: "", end_date: "" });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([getAuditLogs({ ...filters, page_size: 80 }), getAdminUsageRankings()])
+      .then(([logData, rankData]) => {
+        setLogs(logData.items || []);
+        setRankings(rankData || {});
+      })
+      .catch((e: any) => showMsg("err", e.message || "审计日志加载失败"))
+      .finally(() => setLoading(false));
+  }, [filters, showMsg]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const exportLogs = async () => {
+    try {
+      await exportAuditLogsExcel(filters);
+      showMsg("ok", "审计日志 Excel 导出已开始");
+    } catch (e: any) {
+      showMsg("err", e.message || "审计日志导出失败");
+    }
+  };
+
+  const rankGroups = [
+    ["报告生成最多", rankings.top_reports || [], "report_total"],
+    ["下载最多", rankings.top_downloads || [], "download_total"],
+    ["回测最多", rankings.top_backtests || [], "backtest_total"],
+    ["最近活跃", rankings.recent_active || [], "last_active_at"],
+  ] as const;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {rankGroups.map(([title, rows, field]) => (
+          <GlassCard key={title} title={title}>
+            <div className="space-y-2">
+              {rows.slice(0, 5).map((row: any) => (
+                <div key={`${title}-${row.user_id}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                  <span className="text-slate-700">{row.phone || row.username || row.user_id}</span>
+                  <span className="font-mono text-slate-900">{row[field] || 0}</span>
+                </div>
+              ))}
+              {rows.length === 0 && <div className="text-xs text-slate-500">暂无记录</div>}
+            </div>
+          </GlassCard>
+        ))}
+      </div>
+
+      <GlassCard title="审计日志">
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <select value={filters.range} onChange={(e) => setFilters({ ...filters, range: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            <option value="all">全部时间</option>
+            <option value="7">最近7天</option>
+            <option value="30">最近30天</option>
+            <option value="custom">自定义</option>
+          </select>
+          {filters.range === "custom" && (
+            <>
+              <input type="date" value={filters.start_date} onChange={(e) => setFilters({ ...filters, start_date: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-xs" />
+              <input type="date" value={filters.end_date} onChange={(e) => setFilters({ ...filters, end_date: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-xs" />
+            </>
+          )}
+          <input value={filters.user_keyword} onChange={(e) => setFilters({ ...filters, user_keyword: e.target.value })} placeholder="用户ID/手机号" className="rounded-lg border border-slate-200 px-3 py-2 text-xs" />
+          <select value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            <option value="">全部操作</option>
+            <option value="login_success">登录成功</option>
+            <option value="login_failed">登录失败</option>
+            <option value="report_generate">生成报告</option>
+            <option value="report_png_download">下载PNG</option>
+            <option value="report_pdf_download">下载PDF</option>
+            <option value="backtest_run">运行回测</option>
+            <option value="api_config_test">测试API配置</option>
+            <option value="admin_reset_password">重置密码</option>
+          </select>
+          <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            <option value="">全部状态</option>
+            <option value="success">成功</option>
+            <option value="failed">失败</option>
+          </select>
+          <button onClick={load} className="rounded-lg bg-primary-500/15 px-3 py-2 text-xs font-medium text-primary-700">筛选</button>
+          <button onClick={exportLogs} className="rounded-lg bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-700">导出 Excel</button>
+        </div>
+        {loading ? <SkeletonCard /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead><tr className="border-b border-slate-200">{["时间", "用户", "角色", "操作", "对象", "状态", "摘要"].map((h) => <th key={h} className="px-3 py-2 text-left text-xs font-medium text-slate-500">{h}</th>)}</tr></thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id} className="border-b border-slate-100">
+                    <td className="px-3 py-2 text-xs text-slate-500">{log.created_at || "-"}</td>
+                    <td className="px-3 py-2 text-slate-800">{log.actor || "-"}</td>
+                    <td className="px-3 py-2 text-slate-600">{log.role || "-"}</td>
+                    <td className="px-3 py-2 text-slate-800">{log.action_label || log.action}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{log.target_type}:{log.target_id || "-"}</td>
+                    <td className="px-3 py-2"><Badge text={log.status_label || (log.status === "failed" ? "失败" : "成功")} className={log.status === "failed" ? "bg-red-500/10 text-red-600 border-red-500/20" : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"} /></td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{log.message || "-"}</td>
+                  </tr>
+                ))}
+                {logs.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-sm text-slate-500">暂无记录</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </GlassCard>
+    </div>
+  );
+}
+
+function ExportsTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const runExport = async (kind: "users" | "audit") => {
+    setExporting(kind);
+    try {
+      if (kind === "users") {
+        await exportAdminUsersExcel();
+        showMsg("ok", "用户运营统计 Excel 已开始下载");
+      } else {
+        await exportAuditLogsExcel({});
+        showMsg("ok", "审计日志 Excel 已开始下载");
+      }
+    } catch (e: any) {
+      showMsg("err", e.message || "导出失败，请稍后重试");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  return (
+    <GlassCard title="导出管理">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">用户运营统计</p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">导出用户、报告、HTML 查看、PNG/PDF 下载、API 配置等运营字段。</p>
+          <button onClick={() => runExport("users")} disabled={exporting === "users"} className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {exporting === "users" ? "导出中..." : "导出 Excel"}
+          </button>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">审计日志</p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">导出操作时间、用户、角色、操作、对象、状态和摘要。</p>
+          <button onClick={() => runExport("audit")} disabled={exporting === "audit"} className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {exporting === "audit" ? "导出中..." : "导出 Excel"}
+          </button>
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
 function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string) => void }) {
   const { t } = useTranslation();
   const [configs, setConfigs] = useState<ApiConfigItem[]>([]);
@@ -918,7 +1415,8 @@ function ApiConfigTab({ showMsg }: { showMsg: (type: "ok" | "err", text: string)
     setTesting(id);
     try {
       const result = await testApiConfig(id);
-      showMsg(result.status === "ok" ? "ok" : "err", result.message);
+      const prefix = result.status === "ok" ? "测试通过" : result.status === "format_valid" ? "格式有效" : result.status === "unsupported" ? "暂未支持自动测试" : "测试失败";
+      showMsg(result.status === "failed" ? "err" : "ok", `${prefix}：${result.message}`);
     } catch (e: any) { showMsg("err", e.message || t("admin.testFailed")); }
     setTesting(null);
   };

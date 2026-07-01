@@ -1,0 +1,8 @@
+{
+  "name": "清数4号·长期",
+  "horizon": "长期",
+  "description": "稳健质量观察策略，侧重长期财务质量、估值安全边际、波动控制和风险过滤，适合长期研究跟踪。",
+  "signal_rules": ["长期财务质量稳定", "估值安全边际合理", "波动控制优先"],
+  "risk_rules": ["过滤长期下行趋势", "过滤高不确定性行业样本"],
+  "default_params": { "lookback_days": 360, "rebalance": "quarterly" }
+}

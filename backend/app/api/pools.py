@@ -10,22 +10,26 @@ from app.db.session import get_db
 from app.models.daily_price import DailyPrice
 from app.models.stock import Stock
 from app.models.stock_score import StockScore
+from app.services.data_credibility import REAL_SCORE_SOURCE, include_demo_enabled
+from app.services.research_display_summary import build_research_display_summary
+from app.services.score_diagnostics import diagnose_real_scores
+from app.services.system_status import build_system_status
 
 router = APIRouter(prefix="/api/pools", tags=["股票池"])
 
-POOL_DISPLAY_LIMIT = 70
+POOL_DISPLAY_LIMIT = 30
 
 POOL_META = {
     "quality": {
         "name": "优质基本面池",
         "positioning": "以盈利能力、现金流和财务结构为主的基本面筛选池。",
         "rules": ["质量分 >= 10", "按质量分倒序排序"],
-        "scenario": "适合研究长期经营质量较稳定的公司。",
-        "risks": ["若估值偏高或趋势偏弱，短期表现可能不佳", "部分财务数据可能存在披露滞后"],
+        "scenario": "适合研究长期经营质量较稳健的公司。",
+        "risks": ["若估值偏高或趋势偏弱，短期表现可能不稳", "部分财务数据可能存在披露滞后"],
     },
     "undervalued": {
         "name": "低估值池",
-        "positioning": "优先展示估值相对更低或估值吸引力较高的样本。",
+        "positioning": "优先展示估值相对更低或估值吸引力更高的样本。",
         "rules": ["估值分 >= 5", "按估值分倒序排序"],
         "scenario": "适合寻找估值修复研究样本。",
         "risks": ["低估值不等于低风险", "可能存在基本面走弱导致的价值陷阱"],
@@ -75,140 +79,11 @@ POOL_META = {
 }
 
 
-def _stock_flags(stock: Stock, item: dict) -> list[str]:
-    """生成股票风险标签体系（研究提示维度）"""
-    flags = []
-    name = stock.name or ""
-
-    # === 结构性风险（确定性较高）===
-    if "ST" in name.upper():
-        flags.append("ST/风险警示")
-    if "退" in name:
-        flags.append("退市整理/退市风险")
-    if item.get("volatility") and item["volatility"] >= 8:
-        flags.append("短期波动偏高")
-    if item.get("latest_close") is not None and item["latest_close"] < 2:
-        flags.append("流动性风险")
-
-    # === 估值风险 ===
-    if item.get("pe") is not None and item["pe"] >= 60:
-        flags.append("估值偏高")
-    if item.get("pe") is not None and item["pe"] < 0:
-        flags.append("亏损状态")
-    if item.get("pb") is not None and item["pb"] >= 8:
-        flags.append("PB 偏高")
-
-    # === 财务风险（基于评分维度）===
-    if item.get("quality_score", 0) < 10:
-        flags.append("财务质量偏弱")
-    if item.get("risk_score", 0) < 4:
-        flags.append("风险评分偏低")
-    if item.get("growth_score", 0) < 5:
-        flags.append("成长动能不足")
-
-    # === 趋势风险 ===
-    if item.get("trend_score", 0) < 5:
-        flags.append("趋势走弱")
-
-    # === 数据完整性 ===
-    missing = []
-    if item.get("pe") is None:
-        missing.append("PE")
-    if item.get("pb") is None:
-        missing.append("PB")
-    if not stock.industry:
-        missing.append("行业")
-    if missing:
-        flags.append(f"数据缺失({','.join(missing)})")
-
-    # === 通用研究提示（非实时判断，需结合外部信息）===
-    flags.append("宏观/行业变化需关注")
-
-    return flags
-
-
-def _build_pool_explanation(pool_type: str, stock: Stock, item: dict) -> dict:
-    """为股票池标的生成自然语言解释"""
-    flags = _stock_flags(stock, item)
-    advantages = []
-    risks = []
-
-    # 优势维度
-    if item.get("quality_score", 0) >= 20:
-        advantages.append("基本面质量较好")
-    if item.get("valuation_score", 0) >= 15:
-        advantages.append("估值具备一定吸引力")
-    if item.get("growth_score", 0) >= 15:
-        advantages.append("成长维度较强")
-    if item.get("trend_score", 0) >= 15:
-        advantages.append("技术面趋势结构较好")
-    if item.get("total_score", 0) >= 75:
-        advantages.append("综合评分较高")
-
-    # 风险维度（基于 flags 生成自然语言）
-    if "ST/风险警示" in flags:
-        risks.append("存在 ST 或风险警示标记")
-    if "退市整理/退市风险" in flags:
-        risks.append("存在退市相关风险")
-    if "估值偏高" in flags:
-        risks.append("当前估值偏高，修复空间不确定")
-    if "亏损状态" in flags:
-        risks.append("近期处于亏损状态")
-    if "财务质量偏弱" in flags:
-        risks.append("财务质量维度偏弱")
-    if "趋势走弱" in flags:
-        risks.append("技术面趋势走弱")
-    if "短期波动偏高" in flags:
-        risks.append("短期波动率偏高")
-    if "流动性风险" in flags:
-        risks.append("股价偏低，流动性可能不足")
-    if "风险评分偏低" in flags:
-        risks.append("综合风险评分偏低")
-    if "成长动能不足" in flags:
-        risks.append("成长动能不足")
-    if "PB 偏高" in flags:
-        risks.append("PB 估值偏高")
-    if any("数据缺失" in f for f in flags):
-        risks.append("部分财务或行情指标暂缺，解释基于现有数据")
-
-    # 观察建议
-    if pool_type == "risk":
-        observe = "建议优先复核风险来源，结合行业景气和宏观环境判断，不建议作为优选标的。"
-    elif pool_type == "volatile":
-        observe = "建议放入波动观察区，优先核查波动原因和流动性状况。"
-    elif pool_type == "quality":
-        observe = "基本面质量较好，但仍需关注宏观环境、行业景气和估值波动。"
-    elif pool_type == "undervalued":
-        observe = "估值处于较低区间，但低估值不等于低风险，需结合基本面和行业变化判断。"
-    elif pool_type == "trend":
-        observe = "趋势结构较好，但需关注趋势持续性和成交量配合。"
-    elif pool_type in ("steady", "conservative"):
-        observe = "适合稳健配置，但仍需定期复核基本面和估值是否维持一致。"
-    elif pool_type == "aggressive":
-        observe = "成长性较强，但波动可能较大，适合风险承受能力较高的研究场景。"
-    else:
-        observe = "适合继续跟踪财务、估值和趋势是否维持一致。"
-
-    # 入池原因
-    pool_name = POOL_META.get(pool_type, {}).get("name", pool_type)
-    entry_reason = f"{stock.name} 进入{pool_name}，主要因为质量/估值/成长/趋势规则中至少一项达到当前池子的筛选阈值。"
-    if pool_type == "volatile" and item.get("volatility") is not None:
-        entry_reason = f"{stock.name} 最近一周波动率约 {item['volatility']:.2f}%，因此被归入高波动观察池。"
-    if pool_type == "risk":
-        entry_reason = f"{stock.name} 因风险分偏低，被纳入风险预警池，需优先排查潜在异常。"
-    if pool_type == "quality":
-        entry_reason = f"{stock.name} 基本面质量维度较强，进入优质基本面池。"
-    if pool_type == "undervalued":
-        entry_reason = f"{stock.name} 估值维度处于较低区间，进入低估值研究池。"
-
-    return {
-        "entry_reason": entry_reason,
-        "advantages": advantages or ["当前优势主要来自已披露指标中的相对表现"],
-        "risks": risks or ["未发现显著额外风险，但仍需结合宏观环境和行业变化复核"],
-        "observation": observe,
-        "flags": flags,
-        "incomplete": any("数据缺失" in f for f in flags),
-    }
+def _score_query_for_mode(db: Session, include_demo: bool):
+    query = db.query(StockScore)
+    if not include_demo:
+        query = query.filter(StockScore.score_source == REAL_SCORE_SOURCE)
+    return query
 
 
 def _base_item(stock: Stock, score: StockScore | None, price: DailyPrice | None) -> dict:
@@ -228,32 +103,173 @@ def _base_item(stock: Stock, score: StockScore | None, price: DailyPrice | None)
         "latest_close": price.close if price else None,
         "pe": price.pe if price else None,
         "pb": price.pb if price else None,
+        "score_source": getattr(score, "score_source", None),
     }
+
+
+def _stock_flags(stock: Stock, item: dict) -> list[str]:
+    flags = []
+    name = stock.name or ""
+    if "ST" in name.upper():
+        flags.append("ST/风险警示")
+    if "退" in name:
+        flags.append("退市风险")
+    if item.get("volatility") and item["volatility"] >= 8:
+        flags.append("短期波动偏高")
+    if item.get("latest_close") is not None and item["latest_close"] < 2:
+        flags.append("流动性风险")
+    if item.get("pe") is not None and item["pe"] >= 60:
+        flags.append("估值偏高")
+    if item.get("quality_score", 0) < 10:
+        flags.append("财务质量偏弱")
+    if item.get("risk_score", 0) < 4:
+        flags.append("风险评分偏低")
+    missing = []
+    if item.get("pe") is None:
+        missing.append("PE")
+    if item.get("pb") is None:
+        missing.append("PB")
+    if not stock.industry:
+        missing.append("行业")
+    if missing:
+        flags.append(f"数据缺失({','.join(missing)})")
+    return flags
+
+
+def _build_pool_explanation(pool_type: str, stock: Stock, item: dict) -> dict:
+    flags = _stock_flags(stock, item)
+    risks = []
+    if "ST/风险警示" in flags:
+        risks.append("存在 ST 或风险警示标记")
+    if "退市风险" in flags:
+        risks.append("存在退市相关风险")
+    if "估值偏高" in flags:
+        risks.append("当前估值偏高，修复空间不确定")
+    if any(flag.startswith("数据缺失") for flag in flags):
+        risks.append("部分指标缺失，解释基于现有数据生成")
+    if "短期波动偏高" in flags:
+        risks.append("短期波动率偏高")
+
+    observation = "适合继续跟踪财务、估值和趋势是否维持一致。"
+    if pool_type == "risk":
+        observation = "建议优先复核风险来源，不应作为优选研究样本。"
+    elif pool_type == "volatile":
+        observation = "建议放入波动观察区，优先核查波动原因和流动性情况。"
+
+    pool_name = POOL_META.get(pool_type, {}).get("name", pool_type)
+    return {
+        "entry_reason": f"{stock.name} 进入{pool_name}，主要因为现有评分满足该池规则。",
+        "advantages": ["当前解释仅基于数据库中已存在的评分与价格字段生成。"] if not item.get("reason") else [item.get("reason")],
+        "risks": risks or ["未发现额外显著风险，但仍需结合宏观和行业变化复核。"],
+        "observation": observation,
+        "flags": flags,
+        "incomplete": any(flag.startswith("数据缺失") for flag in flags),
+    }
+
+
+def _empty_pool(pool_type: str, system_status: dict, diagnostics: dict | None = None) -> dict:
+    diagnostics_summary = diagnostics or {}
+    return {
+        "type": pool_type,
+        "date": None,
+        "count": 0,
+        "items": [],
+        "has_more": False,
+        "message": _empty_pool_message(system_status, diagnostics_summary),
+        "meta": {
+            **POOL_META.get(pool_type, {"name": pool_type}),
+            "data_updated_at": None,
+            "research_only": True,
+            "display_limit": POOL_DISPLAY_LIMIT,
+            "warning": system_status.get("warning"),
+            "data_mode": system_status.get("data_mode"),
+        },
+        "diagnostics": {
+            "real_score_count": diagnostics_summary.get("real_count", 0),
+            "demo_score_count": diagnostics_summary.get("demo_count", 0),
+            "formal_real_count": diagnostics_summary.get("formal_real_count", 0),
+            "real_observation_count": diagnostics_summary.get("real_observation_count", 0),
+            "risk_observation_count": diagnostics_summary.get("risk_observation_count", 0),
+            "data_quality_limited_count": diagnostics_summary.get("data_quality_limited_count", 0),
+            "reason_code": _empty_pool_reason_code(system_status, diagnostics_summary),
+            "top_reasons": diagnostics_summary.get("top_reasons", []),
+            "launch_data_status": diagnostics_summary.get("launch_data_status"),
+        },
+    }
+
+
+def _empty_pool_reason_code(system_status: dict, diagnostics_summary: dict | None = None) -> str:
+    diagnostics_summary = diagnostics_summary or {}
+    counts = system_status.get("counts") or {}
+    financial_count = system_status.get("financial_metrics_count", 0) or counts.get("financial_metrics", 0) or 0
+    technical_count = system_status.get("technical_indicators_count", 0) or counts.get("technical_indicators", 0) or 0
+    if financial_count > 0 and technical_count > 0 and diagnostics_summary.get("real_count", 0) > 0:
+        return "NO_REAL_SAMPLE_MATCH_POOL_RULE"
+    return "DATA_NOT_READY"
+
+
+def _empty_pool_message(system_status: dict, diagnostics_summary: dict | None = None) -> str:
+    diagnostics_summary = diagnostics_summary or {}
+    real_count = diagnostics_summary.get("real_count", 0)
+    if _empty_pool_reason_code(system_status, diagnostics_summary) == "NO_REAL_SAMPLE_MATCH_POOL_RULE":
+        return f"当前暂无可正式展示的股票池。真实评分样本已接入({real_count}只)，但当前样本多处于风险观察或数据质量受限状态，尚未达到该股票池筛选门槛。"
+    return f"当前暂无可正式展示的股票池。真实评分样本已接入({real_count}只)，但当前样本多处于风险观察或数据质量受限状态，尚未达到该股票池筛选门槛。"
 
 
 @router.get("")
 def get_stock_pool(
     type: str = Query("quality", description="pool type"),
+    limit: int = Query(30, ge=1, le=30, description="max items"),
+    include_demo: bool = Query(False, description="是否包含演示评分"),
     db: Session = Depends(get_db),
 ):
-    latest = db.query(func.max(StockScore.score_date)).scalar()
+    include_demo = include_demo_enabled(include_demo)
+    system_status = build_system_status(db)
+    summary = build_research_display_summary(db, include_demo=include_demo)
+    diagnostics = summary["diagnostics"]
+    diagnostics_summary = diagnostics
+    detail_rows = diagnose_real_scores(db)
+    diagnostic_map = {item.get("stock_code"): item for item in detail_rows.get("items", [])}
+    effective_limit = min(limit, POOL_DISPLAY_LIMIT)
+
+    latest_query = _score_query_for_mode(db, include_demo)
+    latest = latest_query.with_entities(func.max(StockScore.score_date)).scalar()
+    if not latest:
+        return _empty_pool(type, system_status, diagnostics=diagnostics)
+
     if type == "volatile":
-        result = _get_volatile_pool(db)
+        result = _get_volatile_pool(db, include_demo=include_demo)
         result["meta"] = {
             **POOL_META["volatile"],
             "data_updated_at": result.get("date"),
             "research_only": True,
+            "display_limit": effective_limit,
+            "warning": system_status.get("warning"),
+            "data_mode": system_status.get("data_mode"),
         }
+        if not result.get("items") and not include_demo:
+            result["message"] = _empty_pool_message(system_status, diagnostics_summary)
+            result["diagnostics"] = {
+                "real_score_count": diagnostics_summary.get("real_count", 0),
+                "demo_score_count": diagnostics_summary.get("demo_count", 0),
+                "formal_real_count": diagnostics_summary.get("formal_real_count", 0),
+                "real_observation_count": diagnostics_summary.get("real_observation_count", 0),
+                "risk_observation_count": diagnostics_summary.get("risk_observation_count", 0),
+                "data_quality_limited_count": diagnostics_summary.get("data_quality_limited_count", 0),
+                "reason_code": _empty_pool_reason_code(system_status, diagnostics_summary),
+                "top_reasons": diagnostics_summary.get("top_reasons", []),
+                "launch_data_status": diagnostics_summary.get("launch_data_status"),
+            }
         return result
-
-    if not latest:
-        return {"type": type, "items": [], "meta": {**POOL_META.get(type, {}), "data_updated_at": None, "research_only": True}}
 
     query = (
         db.query(StockScore, Stock)
         .join(Stock, StockScore.stock_id == Stock.id)
         .filter(StockScore.score_date == latest, Stock.status == "ACTIVE")
     )
+    if not include_demo:
+        query = query.filter(StockScore.score_source == REAL_SCORE_SOURCE)
+
     if type == "quality":
         query = query.filter(StockScore.quality_score >= 10).order_by(StockScore.quality_score.desc())
     elif type == "undervalued":
@@ -271,7 +287,7 @@ def get_stock_pool(
     else:
         query = query.order_by(StockScore.total_score.desc())
 
-    results = query.limit(POOL_DISPLAY_LIMIT * 2).all()
+    results = query.limit(effective_limit * 2).all()
     stock_ids = [stock.id for _, stock in results]
     latest_price_sq = (
         db.query(DailyPrice.stock_id, func.max(DailyPrice.trade_date).label("max_date"))
@@ -288,6 +304,10 @@ def get_stock_pool(
 
     items = []
     for score, stock in results:
+        if not include_demo:
+            diagnostic = diagnostic_map.get(stock.symbol, {})
+            if diagnostic.get("display_tier") != "formal_real":
+                continue
         price = price_map.get(stock.id)
         if type == "steady" and price and price.pe and price.pe >= 60:
             continue
@@ -296,22 +316,39 @@ def get_stock_pool(
         item["risk_flags"] = item["explanation"]["flags"]
         items.append(item)
 
-    items = items[:POOL_DISPLAY_LIMIT]
-    return {
+    items = items[:effective_limit]
+    payload = {
         "type": type,
         "date": str(latest),
         "count": len(items),
         "items": items,
-        "has_more": len(items) >= POOL_DISPLAY_LIMIT,
+        "has_more": len(items) >= effective_limit,
         "meta": {
             **POOL_META.get(type, {"name": type}),
             "data_updated_at": str(latest),
             "research_only": True,
+            "display_limit": effective_limit,
+            "warning": system_status.get("warning"),
+            "data_mode": system_status.get("data_mode"),
         },
     }
+    if not include_demo and not items:
+        payload["message"] = _empty_pool_message(system_status, diagnostics_summary)
+        payload["diagnostics"] = {
+            "real_score_count": diagnostics_summary.get("real_count", 0),
+            "demo_score_count": diagnostics_summary.get("demo_count", 0),
+            "formal_real_count": diagnostics_summary.get("formal_real_count", 0),
+            "real_observation_count": diagnostics_summary.get("real_observation_count", 0),
+            "risk_observation_count": diagnostics_summary.get("risk_observation_count", 0),
+            "data_quality_limited_count": diagnostics_summary.get("data_quality_limited_count", 0),
+            "reason_code": _empty_pool_reason_code(system_status, diagnostics_summary),
+            "top_reasons": diagnostics_summary.get("top_reasons", []),
+            "launch_data_status": diagnostics_summary.get("launch_data_status"),
+        }
+    return payload
 
 
-def _get_volatile_pool(db: Session) -> dict:
+def _get_volatile_pool(db: Session, include_demo: bool = False) -> dict:
     latest_date = db.query(func.max(DailyPrice.trade_date)).scalar()
     if not latest_date:
         return {"type": "volatile", "items": [], "date": None, "count": 0}
@@ -371,12 +408,11 @@ def _get_volatile_pool(db: Session) -> dict:
     ) if stock_ids else []
     first_price_map = {price.stock_id: price.close for price in first_prices}
 
-    latest_score_date = db.query(func.max(StockScore.score_date)).scalar()
-    score_records = (
-        db.query(StockScore)
-        .filter(StockScore.stock_id.in_(stock_ids), StockScore.score_date == latest_score_date)
-        .all()
-    ) if stock_ids and latest_score_date else []
+    latest_score_date = db.query(func.max(StockScore.score_date)).filter(StockScore.stock_id.in_(stock_ids)).scalar()
+    score_records_query = db.query(StockScore).filter(StockScore.stock_id.in_(stock_ids), StockScore.score_date == latest_score_date)
+    if not include_demo:
+        score_records_query = score_records_query.filter(StockScore.score_source == REAL_SCORE_SOURCE)
+    score_records = score_records_query.all() if stock_ids and latest_score_date else []
     score_map = {score.stock_id: score for score in score_records}
 
     for row in stats:

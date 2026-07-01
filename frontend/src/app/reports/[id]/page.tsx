@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import { getReport } from "@/lib/api";
+import { downloadReportPng, getReport } from "@/lib/api";
 import { showToast } from "@/components/ui/Toast";
 import { useTranslation } from "@/lib/i18n";
 import { normalizeResearchText } from "@/lib/utils";
@@ -110,50 +110,15 @@ export default function ReportDetailPage() {
   }, [reportId]);
 
   const handleDownloadPng = async () => {
-    if (!reportRef.current) {
-      showToast("error", "报告内容未加载，无法生成 PNG。");
-      return;
-    }
+    if (!report) return;
     setDownloading("png");
     try {
-      const html2canvas = (await import("html2canvas")).default;
-
-      const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: false,
-        allowTaint: true,
-        logging: false,
-        windowWidth: 900,
-        removeContainer: true,
-        imageTimeout: 5000,
-        ignoreElements: (el) => {
-          return el.classList?.contains("no-print") || false;
-        },
-      });
-
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/png");
-      });
-
-      if (!blob || blob.size < 100) {
-        showToast("error", "PNG 生成失败，内容可能为空。");
-        return;
-      }
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.download = `${(report?.title || "report").replace(/[<>:"/\\|?*]/g, "_")}.png`;
-      a.href = url;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      showToast("success", "PNG 已下载。");
+      const filename = `${report.stock_code || report.report_type}_${report.stock_name || "研究报告"}_报告摘要_${report.report_date}.png`.replace(/[<>:"/\\|?*]/g, "_");
+      await downloadReportPng(report.id, filename);
+      showToast("success", "PNG 摘要图下载已开始。");
     } catch (err: unknown) {
-      console.error("PNG generation failed:", err);
-      const msg = err instanceof Error ? err.message : "未知错误";
-      showToast("error", `PNG 生成失败: ${msg}`);
+      const msg = err instanceof Error ? err.message : "PNG 摘要图生成失败";
+      showToast("error", `PNG 摘要图生成失败: ${msg}`);
     } finally {
       setDownloading(null);
     }
@@ -199,6 +164,7 @@ export default function ReportDetailPage() {
   }
 
   const reportTypeLabel = REPORT_TYPE_LABELS[report.report_type] || "研究报告";
+  const reportStatus = report.report_data_status;
 
   return (
     <div className="min-h-screen p-4 md:p-8" style={{ background: "var(--bg-page)" }}>
@@ -214,7 +180,7 @@ export default function ReportDetailPage() {
               disabled={downloading === "png"}
               className="btn-secondary !px-4 !py-2 text-xs"
             >
-              📷 {downloading === "png" ? "生成中..." : "下载 PNG 页面快照"}
+              📷 {downloading === "png" ? "生成中..." : "下载 PNG 摘要图"}
             </button>
             <button
               onClick={handleDownloadPdf}
@@ -226,6 +192,12 @@ export default function ReportDetailPage() {
           </div>
         </div>
 
+        {reportStatus && reportStatus !== "real_backed" && (
+          <div className="no-print max-w-[900px] mx-auto mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            本报告基于演示评分或数据不足状态生成，仅用于研究辅助，不代表真实评分结论。
+          </div>
+        )}
+
         {/* 报告正文（不使用 overflow-hidden 以确保 html2canvas 能捕获完整内容） */}
         <div ref={reportRef} className="report-container max-w-[900px] mx-auto bg-white rounded-2xl shadow-sm border border-[var(--border-default)]">
           {/* 顶部装饰条 */}
@@ -236,7 +208,7 @@ export default function ReportDetailPage() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
               <img
                 src="/brand/qingshu-icon-logo.png"
-                alt="清算"
+                alt="清数智算"
                 width={36}
                 height={36}
                 style={{ borderRadius: "8px" }}
@@ -247,7 +219,7 @@ export default function ReportDetailPage() {
                   {cleanText(report.title)}
                 </div>
                 <div style={{ fontSize: "13px", color: "#64748b", marginTop: "2px" }}>
-                  清算智能投研工作台 · {report.report_date} · {reportTypeLabel}
+                  清数智算智能投研工作台 · {report.report_date} · {reportTypeLabel}
                 </div>
               </div>
             </div>
@@ -270,7 +242,7 @@ export default function ReportDetailPage() {
               本报告由系统基于公开数据、数据库评分和规则模型生成，仅用于研究辅助，不构成投资建议。
             </div>
             <div style={{ fontSize: "11px", color: "#cbd5e1", marginTop: "4px" }}>
-              清算 · 智能投研工作台 · {report.report_date}
+              清数智算 · 智能投研工作台 · {report.report_date}
             </div>
           </div>
         </div>

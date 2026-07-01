@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qs-adata-bridge"
+version = "1.2.0"
+description = "清数智算与 AData 之间的数据桥接层"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.16.0",
+    "pandas>=0.22.0",
+    "beautifulsoup4>=4.0.2",
+]
+
+[project.optional-dependencies]
+full = ["py_mini_racer>=0.6.0", "mini-racer>=0.12.0"]
+
+[tool.setuptools.packages.find]
+include = ["qs_adapter*", "qs_backend_bridge*"]

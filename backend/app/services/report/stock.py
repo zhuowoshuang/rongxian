@@ -1,5 +1,5 @@
 """
-个股深度分析报告生成模块 — 清算量化分析系统
+个股深度分析报告生成模块 — 清数智算量化分析系统
 从20年华尔街投资专家视角生成专业级个股研究报告
 """
 from datetime import date, datetime
@@ -20,6 +20,7 @@ from app.services.report.utils import (
     quality_comment, valuation_comment, growth_comment,
     trend_comment, risk_comment,
 )
+from app.services.scoring import _latest_financial_for_stock
 
 
 # ==================== 个股深度分析报告（8000+字专业版）====================
@@ -59,9 +60,11 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
         DailyPrice.stock_id == stock_id
     ).order_by(DailyPrice.trade_date.desc()).limit(60).all()
 
-    financials = db.query(FinancialMetric).filter(
-        FinancialMetric.stock_id == stock_id
-    ).order_by(FinancialMetric.report_period.desc()).limit(4).all()
+    financials = sorted(
+        db.query(FinancialMetric).filter(FinancialMetric.stock_id == stock_id).all(),
+        key=lambda item: ((item.report_date or date.min), item.id or 0),
+        reverse=True,
+    )[:4]
 
     tech = db.query(TechnicalIndicator).filter(
         TechnicalIndicator.stock_id == stock_id
@@ -116,13 +119,27 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
     close_prices = [p.close for p in reversed(prices_20)] if prices_20 else []
     price_spark = spark_line(close_prices) if close_prices else "数据不足"
 
+    # === 检查数据覆盖状态 ===
+    has_score = score is not None
+    has_financials = len(financials) > 0
+    has_technicals = tech is not None
+    has_prices = latest_price is not None
+
+    if not has_score and not has_financials:
+        return _generate_data_status_report(
+            db=db, stock=stock, report_date=report_date,
+            has_prices=has_prices, has_technicals=has_technicals,
+            latest_price=latest_price, tech=tech, prices_20=prices_20,
+        )
+
     # === 生成报告 ===
     market_label = "A股" if stock.market == "A_SHARE" else "港股"
+    score_display = f"{score.total_score:.0f}/100" if score else "N/A"
     md = f"""# {stock.symbol} {stock.name} 深度分析报告
 
 > **报告日期:** {report_date} | **报告编号:** RPT-{report_date.strftime('%Y%m%d')}-{stock.symbol}
 > **市场:** {market_label} | **交易所:** {stock.exchange} | **行业:** {stock.industry} | **板块:** {stock.sector}
-> **综合评级:** {rating_text(score.rating) if score else '暂无评分'} | **综合评分:** {score.total_score:.0f}/100 if score else 'N/A'
+> **综合评级:** {rating_text(score.rating) if score else '暂无评分'} | **综合评分:** {score_display}
 
 ---
 
@@ -663,9 +680,9 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
 
 ---
 
-> **免责声明:** 本报告由清算量化分析系统自动生成，基于 {report_date} 公开市场数据和多维量化评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
+> **免责声明:** 本报告由清数智算量化分析系统自动生成，基于 {report_date} 公开市场数据和多维量化评分模型，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
 
-*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清算量化分析系统 v2.0*
+*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清数智算量化分析系统 v2.0*
 """
 
     # AI 个股深度分析（DeepSeek）
@@ -744,3 +761,176 @@ def generate_stock_report(db: Session, stock_id: int, report_date: date) -> Repo
     db.commit()
     db.refresh(report)
     return report
+
+
+def _generate_data_status_report(
+    db: Session,
+    stock: Stock,
+    report_date: date,
+    has_prices: bool,
+    has_technicals: bool,
+    latest_price,
+    tech,
+    prices_20,
+) -> Report:
+    """生成数据状态报告 — 当标的缺少评分和财务数据时，展示覆盖状态和缺失项"""
+
+    # 收集覆盖状态
+    coverage_items = []
+    if has_prices:
+        price_date = latest_price.trade_date if latest_price else "—"
+        price_val = latest_price.close if latest_price else None
+        price_str = f"{price_val:.2f} 元" if price_val else "—"
+        coverage_items.append(f"- ✅ 行情数据：已覆盖（最新：{price_date}，收盘价 {price_str}）")
+    else:
+        coverage_items.append("- ❌ 行情数据：未覆盖")
+
+    coverage_items.append("- ❌ 财务数据：未覆盖（暂无财报摘要数据）" if not _has_financial(db, stock) else "- ✅ 财务数据：已覆盖")
+
+    if has_technicals:
+        tech_date = tech.trade_date if tech else "—"
+        coverage_items.append(f"- ✅ 技术指标：已覆盖（最新：{tech_date}）")
+    else:
+        coverage_items.append("- ❌ 技术指标：未覆盖")
+
+    # 构建状态报告
+    price_info = ""
+    if has_prices and latest_price:
+        price_info = f"""
+### 当前行情快照
+
+| 指标 | 数值 |
+|------|------|
+| 最新收盘价 | {latest_price.close:.2f} 元 |
+| 市盈率 (PE) | {latest_price.pe if latest_price.pe else 'N/A'} |
+| 市净率 (PB) | {latest_price.pb if latest_price.pb else 'N/A'} |
+| 总市值 | {f"{latest_price.market_cap:.0f} 亿" if latest_price.market_cap else 'N/A'} |
+"""
+
+    # 价格走势迷你图
+    if prices_20 and len(prices_20) >= 2:
+        close_prices = [p.close for p in reversed(prices_20)]
+        price_spark = spark_line(close_prices)
+        price_change = ((prices_20[0].close - prices_20[-1].close) / prices_20[-1].close * 100)
+        price_info += f"""
+### 近20日价格走势
+
+```
+{price_spark}
+```
+近20日涨跌幅：{price_change:+.2f}%
+"""
+
+    md = f"""# {stock.symbol} {stock.name} 数据状态报告
+
+> **报告日期:** {report_date} | **报告编号:** RPT-DS-{report_date.strftime('%Y%m%d')}-{stock.symbol}
+> **市场:** {"A股" if stock.market == "A_SHARE" else "港股"} | **行业:** {stock.industry} | **板块:** {stock.sector}
+
+---
+
+## 一、数据覆盖现状
+
+"""
+
+    md += "\n".join(coverage_items)
+    md += "\n"
+
+    md += """
+
+---
+
+## 二、缺失数据说明
+
+当前标的无法形成完整量化评分，原因如下：
+
+"""
+
+    # 判断缺失原因
+    reasons = []
+    if not has_prices:
+        reasons.append("1. **行情数据缺失**：无法获取每日价格、成交量、市值等基础行情信息，评分的全部维度均依赖行情数据。")
+    if not _has_financial(db, stock):
+        reasons.append("2. **财务数据缺失**：缺少营收、净利润、ROE、毛利率、负债率等核心财务指标，导致质量评分、估值评分、成长评分三个关键维度无法计算。")
+    if not has_technicals:
+        reasons.append("3. **技术指标缺失**：缺少 MA、MACD、RSI 等技术指标数据，导致趋势评分维度无法生成。")
+
+    if not reasons:
+        reasons.append("当前已具备基础数据，但评分仍在生成流程中。请稍后刷新或联系系统管理员触发评分任务。")
+
+    md += "\n".join(reasons)
+    md += "\n"
+
+    md += """
+
+---
+
+## 三、数据覆盖要件说明
+
+完整的量化评分体系依赖以下三类数据的协同：
+
+| 评分类别 | 满分 | 依赖数据 | 当前状态 |
+|----------|------|----------|----------|
+| 质量评分 | 30 | 财务指标（ROE、毛利率、负债率等） | """ + ("就绪" if _has_financial(db, stock) else "缺失") + """ |
+| 估值评分 | 20 | 财务指标 + 行情价格 | """ + ("就绪" if _has_financial(db, stock) and has_prices else "缺失") + """ |
+| 成长评分 | 20 | 财务指标（同比增速、EPS 增长等） | """ + ("就绪" if _has_financial(db, stock) else "缺失") + """ |
+| 趋势评分 | 20 | 技术指标（MA、MACD、RSI 等） | """ + ("就绪" if has_technicals else "缺失") + """ |
+| 风险评分 | 10 | 财务指标 + 行情波动率 | """ + ("就绪" if _has_financial(db, stock) and has_prices else "缺失") + """ |
+
+"""
+
+    md += f"""
+
+{price_info}
+
+---
+
+## 四、推荐可体验标的
+
+以下标的具备完整的评分和财务数据，可用于体验系统的完整分析功能：
+
+| 代码 | 名称 | 行业 | 说明 |
+|------|------|------|------|
+| 002415 | 海康威视 | 计算机设备 | A股优质蓝筹，财务数据完整，评分体系覆盖全面 |
+| 600519 | 贵州茅台 | 白酒 | A股价值标杆，多维度评分数据齐备，报告内容丰富 |
+
+> 以上标的已接入完整的数据链路，可生成包含行情分析、技术面诊断、财务深度解读和投资建议的全量报告。
+
+---
+
+> **免责声明:** 本报告由清数智算量化分析系统自动生成，基于 {report_date} 公开市场数据，仅供研究参考，不构成任何投资建议。投资有风险，入市需谨慎。
+
+*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 清数智算量化分析系统 v2.0*
+"""
+
+    report = Report(
+        report_date=report_date,
+        report_type=ReportType.STOCK,
+        title=f"{stock.symbol} {stock.name} 数据状态报告 — {report_date}",
+        summary=f"{stock.name} 数据状态报告：行情{'已' if has_prices else '未'}覆盖，财务未覆盖，评分无法形成",
+        content_markdown=md,
+        content_json={
+            "stock_id": stock.id,
+            "symbol": stock.symbol,
+            "name": stock.name,
+            "market": stock.market,
+            "industry": stock.industry,
+            "has_prices": has_prices,
+            "has_financials": False,
+            "has_technicals": has_technicals,
+            "close": latest_price.close if latest_price else None,
+            "status": "data_insufficient",
+        },
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+def _has_financial(db: Session, stock: Stock) -> bool:
+    """检查股票是否有财务数据"""
+    from app.models.financial_metric import FinancialMetric
+    count = db.query(func.count(FinancialMetric.id)).filter(
+        FinancialMetric.stock_id == stock.id
+    ).scalar()
+    return (count or 0) > 0
